@@ -148,6 +148,9 @@ controls. **That is a weaker security boundary.** Only turn it on for machines w
 trade-off. As an extra safeguard, the service ignores the setting unless the configuration folder and
 file are owned by Administrators/SYSTEM and aren't writable by anyone else.
 
+> **Not set by the installer.** The MSI always installs this setting as `false` and has no install-time
+> option for it. An administrator must change it in `config.json` after installing.
+
 Please report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 
 ## Limitations
@@ -157,6 +160,8 @@ Please report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 - Windows 11 *Administrator Protection* changes how elevation works. HelloAnchor may not be able to get
   an elevated token for your account with it enabled; this is still being verified.
 - x64 only for now. ARM64 support is planned (the build is structured for it).
+- The installer can't set `AllowSystemTokenFallback`; it has to be changed in `config.json` after
+  installing (see [Standard users](#standard-users-allowsystemtokenfallback)).
 
 ---
 
