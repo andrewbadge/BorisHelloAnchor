@@ -35,20 +35,25 @@ internal sealed class PromptAnchor(
     public int ActiveCount => _active.Count;
 
     /// <summary>
-    /// Handles a newly shown prompt window: moves it if necessary and schedules the verify checks.
+    /// Handles a prompt window that was just shown or uncloaked: moves it if necessary and schedules the
+    /// verify checks.
     /// </summary>
     /// <param name="hwnd">The prompt window (already filtered by <see cref="WindowFilter"/>).</param>
     public void OnPromptShown(HWND hwnd)
     {
         var options = getOptions();
 
-        // A prompt can be shown more than once (hidden and re-shown). Start a fresh tracking cycle, but
-        // keep the attempt count so the summary line stays meaningful.
+        // The same prompt normally arrives twice: once when shown (still cloaked) and again when uncloaked,
+        // right after the broker has re-centred it on the primary monitor. It can also be hidden and re-shown.
+        // Each arrival starts a fresh tracking cycle, but keeps the move count (so the summary line stays
+        // meaningful) and whether we have moved it (so a later DPI resize is still re-centred).
         var previousMoves = 0;
+        var previouslyMoved = false;
         if (_active.Remove(hwnd, out var previous))
         {
             previous.Cancelled = true;
             previousMoves = previous.Moves;
+            previouslyMoved = previous.AgentMoved;
         }
 
         var target = displays.Resolve(options);
@@ -63,15 +68,24 @@ internal sealed class PromptAnchor(
             return;
         }
 
-        var state = new PromptState(hwnd, target.DeviceName) { Moves = previousMoves };
+        var state = new PromptState(hwnd, target.DeviceName) { Moves = previousMoves, AgentMoved = previouslyMoved };
         _active[hwnd] = state;
 
         if (WindowPlacement.IsCentreInside(rect, target.WorkArea))
         {
-            // Windows (or the user's layout) already put it on the right display. Leave it alone but keep
-            // watching in case the broker repositions it shortly after showing.
-            state.Outcome = "already on target";
-            logger.LogDebug("Prompt {Hwnd} already on {Device}; watching.", hwnd.Format(), target.DeviceName);
+            if (state.AgentMoved && !WindowPlacement.IsCentred(rect, target.WorkArea))
+            {
+                // Ours from an earlier arrival, still on target but resized (typically: sized to the real
+                // dialog when uncloaked). Re-centre it at its new size.
+                Move(state, rect, target);
+            }
+            else
+            {
+                // Already where it should be: either Windows put it on the right display, or we did and it
+                // stayed. Leave it alone but keep watching in case the broker repositions it.
+                state.Outcome = state.AgentMoved ? "centred" : "already on target";
+                logger.LogDebug("Prompt {Hwnd} already on {Device}; watching.", hwnd.Format(), target.DeviceName);
+            }
         }
         else
         {

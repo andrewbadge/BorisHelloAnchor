@@ -4,7 +4,7 @@
     "TargetDeviceName": null,
     "TargetProcessNames": [ "CredentialUIBroker" ],
     "TargetWindowClasses": [ "Credential Dialog Xaml Host" ],
-    "VerifyDelaysMs": [ 150, 300, 600 ],
+    "VerifyDelaysMs": [ 150, 300, 600, 1000, 2000 ],
     "SkipRemoteSessions": true,
     "AllowSystemTokenFallback": false,
     "AgentRestartBackoffSeconds": [ 2, 5, 15, 60 ],

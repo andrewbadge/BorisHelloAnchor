@@ -90,7 +90,7 @@ Changes apply within about a second, with no restart needed.
     "TargetDeviceName": null,
     "TargetProcessNames": [ "CredentialUIBroker" ],
     "TargetWindowClasses": [ "Credential Dialog Xaml Host" ],
-    "VerifyDelaysMs": [ 150, 300, 600 ],
+    "VerifyDelaysMs": [ 150, 300, 600, 1000, 2000 ],
     "SkipRemoteSessions": true,
     "AllowSystemTokenFallback": false,
     "AgentRestartBackoffSeconds": [ 2, 5, 15, 60 ],
@@ -105,7 +105,7 @@ Changes apply within about a second, with no restart needed.
 | `TargetDeviceName` | `null` | GDI name such as `\\.\DISPLAY1`, used when `TargetDisplay` is `DeviceName`. Useful for dual-screen laptops. |
 | `TargetProcessNames` | `CredentialUIBroker` | Processes whose windows are candidates (no `.exe`). |
 | `TargetWindowClasses` | `Credential Dialog Xaml Host` | Window classes that must also match. |
-| `VerifyDelaysMs` | `150, 300, 600` | After moving, re-check at these times and fix the position if it snapped back or was resized. |
+| `VerifyDelaysMs` | `150, 300, 600, 1000, 2000` | After each move, re-check at these times (ms) and fix the position if it snapped back or was resized. A safety net: the agent also re-anchors the prompt the moment it becomes visible. |
 | `SkipRemoteSessions` | `true` | Don't run in Remote Desktop sessions (they have no internal display). |
 | `AllowSystemTokenFallback` | `false` | See [Standard users](#standard-users-allowsystemtokenfallback). |
 | `AgentRestartBackoffSeconds` | `2, 5, 15, 60` | Wait before restarting a crashed agent; the last value repeats. |
