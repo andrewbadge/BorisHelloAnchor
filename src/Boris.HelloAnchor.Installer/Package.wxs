@@ -49,8 +49,84 @@
       <ComponentGroupRef Id="ProgramFiles" />
       <ComponentGroupRef Id="ServiceComponents" />
       <ComponentGroupRef Id="DataFolders" />
+      <ComponentGroupRef Id="FallbackSetting" />
     </Feature>
   </Package>
+
+  <Fragment>
+    <!--
+      Public property ALLOWSYSTEMTOKENFALLBACK (0 or 1, default 0) writes the existing AllowSystemTokenFallback
+      setting into config.json, so an administrator can choose it at install time:
+
+        msiexec /i Boris.HelloAnchor-x.y.z-x64.msi ALLOWSYSTEMTOKENFALLBACK=1
+
+      The value is remembered in HKLM\SOFTWARE\Boris\HelloAnchor and reused on upgrade/repair unless a new
+      value is given on the command line ("remember property" pattern):
+        1. Before AppSearch, copy any command-line value to FALLBACK_CMDLINE.
+        2. AppSearch reads the remembered value into FALLBACK_REMEMBERED.
+        3. If nothing was given on the command line, use the remembered value.
+        4. If there is still no value (first install), use the default 0.
+      The property deliberately has no Value in the Property table: that is what lets step 1 tell "given on
+      the command line" apart from "defaulted".
+    -->
+    <Property Id="ALLOWSYSTEMTOKENFALLBACK" Secure="yes" />
+    <Property Id="FALLBACK_CMDLINE" Secure="yes" />
+    <Property Id="FALLBACK_REMEMBERED" Secure="yes">
+      <RegistrySearch Id="RememberedFallbackSearch"
+                      Root="HKLM"
+                      Key="SOFTWARE\Boris\HelloAnchor"
+                      Name="AllowSystemTokenFallback"
+                      Type="raw"
+                      Bitness="always64" />
+    </Property>
+
+    <SetProperty Id="FALLBACK_CMDLINE" Action="SaveFallbackCmdLine" Value="[ALLOWSYSTEMTOKENFALLBACK]"
+                 Before="AppSearch" Sequence="first" Condition="ALLOWSYSTEMTOKENFALLBACK" />
+    <SetProperty Id="ALLOWSYSTEMTOKENFALLBACK" Action="UseRememberedFallback" Value="[FALLBACK_REMEMBERED]"
+                 After="AppSearch" Sequence="first" Condition="NOT FALLBACK_CMDLINE AND FALLBACK_REMEMBERED" />
+    <SetProperty Id="ALLOWSYSTEMTOKENFALLBACK" Action="DefaultFallback" Value="0"
+                 After="UseRememberedFallback" Sequence="first" Condition="NOT ALLOWSYSTEMTOKENFALLBACK" />
+
+    <!-- Reject anything but 0 or 1 before any change is made. -->
+    <Launch Condition="Installed OR ALLOWSYSTEMTOKENFALLBACK = &quot;0&quot; OR ALLOWSYSTEMTOKENFALLBACK = &quot;1&quot;"
+            Message="ALLOWSYSTEMTOKENFALLBACK must be 0 or 1." />
+
+    <!--
+      Writes the value into config.json after the files are laid down (so the default config.json exists on a
+      first install) and before the service starts. Deferred and not impersonated, so it runs as SYSTEM and
+      can write the Administrators-owned file. WixQuietExec (WiX Util extension) runs the command without a
+      console window and captures its output in the MSI log. Not run on uninstall.
+    -->
+    <SetProperty Id="WriteFallbackSetting" Action="SetWriteFallbackSettingCommand" Sequence="execute" Before="WriteFallbackSetting"
+                 Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLFOLDER]Set-ConfigFallback.ps1&quot; -Path &quot;[DATAFOLDER]config.json&quot; -Value [ALLOWSYSTEMTOKENFALLBACK]" />
+    <CustomAction Id="WriteFallbackSetting"
+                  BinaryRef="Wix4UtilCA_X64"
+                  DllEntry="WixQuietExec"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="check" />
+
+    <InstallExecuteSequence>
+      <Custom Action="WriteFallbackSetting" After="InstallFiles" Condition="NOT (REMOVE~=&quot;ALL&quot;)" />
+    </InstallExecuteSequence>
+
+    <ComponentGroup Id="FallbackSetting">
+      <!-- The helper script the custom action runs. Lives in the admin-only Program Files folder. -->
+      <Component Id="FallbackScript" Directory="INSTALLFOLDER">
+        <File Id="SetConfigFallbackPs1" Source="Set-ConfigFallback.ps1" KeyPath="yes" />
+      </Component>
+
+      <!-- Remembers the chosen value for the next upgrade or repair (read back by RememberedFallbackSearch). -->
+      <Component Id="RememberFallback" Directory="INSTALLFOLDER" Guid="*">
+        <RegistryValue Root="HKLM"
+                       Key="SOFTWARE\Boris\HelloAnchor"
+                       Name="AllowSystemTokenFallback"
+                       Type="string"
+                       Value="[ALLOWSYSTEMTOKENFALLBACK]"
+                       KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
 
   <Fragment>
     <!--
