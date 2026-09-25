@@ -16,6 +16,11 @@ within a fraction of a second, without taking focus.
 > HelloAnchor is an independent open-source project. It is not affiliated with or endorsed by Microsoft.
 > "Windows Hello" is a trademark of Microsoft Corporation.
 
+### Why Boris?
+
+Boris is a spoodle — the dog of the project's author, [Andrew Badge](https://github.com/andrewbadge).
+The project carries his name, just as the author's other Boris projects do.
+
 ---
 
 ## How it works
