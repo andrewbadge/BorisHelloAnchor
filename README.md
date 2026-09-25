@@ -16,6 +16,11 @@ within a fraction of a second, without taking focus.
 > HelloAnchor is an independent open-source project. It is not affiliated with or endorsed by Microsoft.
 > "Windows Hello" is a trademark of Microsoft Corporation.
 
+### Why Boris?
+
+Boris is a spoodle — the dog of the project's author, [Andrew Badge](https://github.com/andrewbadge).
+The project carries his name, just as the author's other Boris projects do.
+
 ---
 
 ## How it works
@@ -58,6 +63,10 @@ The full design is in [`docs/SPEC.md`](docs/SPEC.md).
 1. Download `Boris.HelloAnchor-x.y.z-x64.msi` from the Releases page (or [build it](#building-from-source)).
 2. Run it. The service `Boris HelloAnchor` is installed, set to start automatically, and started straight away.
 
+If you sign in with a local administrator account, that's all you need. Standard (non-admin) accounts get no
+agent by default; only in that case can an administrator install with `ALLOWSYSTEMTOKENFALLBACK=1`.
+**Read [Standard users](#standard-users-allowsystemtokenfallback) first: it weakens a security boundary.**
+
 Check it is working:
 
 ```powershell
@@ -86,7 +95,7 @@ Changes apply within about a second, with no restart needed.
     "TargetDeviceName": null,
     "TargetProcessNames": [ "CredentialUIBroker" ],
     "TargetWindowClasses": [ "Credential Dialog Xaml Host" ],
-    "VerifyDelaysMs": [ 150, 300, 600 ],
+    "VerifyDelaysMs": [ 150, 300, 600, 1000, 2000 ],
     "SkipRemoteSessions": true,
     "AllowSystemTokenFallback": false,
     "AgentRestartBackoffSeconds": [ 2, 5, 15, 60 ],
@@ -101,7 +110,7 @@ Changes apply within about a second, with no restart needed.
 | `TargetDeviceName` | `null` | GDI name such as `\\.\DISPLAY1`, used when `TargetDisplay` is `DeviceName`. Useful for dual-screen laptops. |
 | `TargetProcessNames` | `CredentialUIBroker` | Processes whose windows are candidates (no `.exe`). |
 | `TargetWindowClasses` | `Credential Dialog Xaml Host` | Window classes that must also match. |
-| `VerifyDelaysMs` | `150, 300, 600` | After moving, re-check at these times and fix the position if it snapped back or was resized. |
+| `VerifyDelaysMs` | `150, 300, 600, 1000, 2000` | After each move, re-check at these times (ms) and fix the position if it snapped back or was resized. A safety net: the agent also re-anchors the prompt the moment it becomes visible. |
 | `SkipRemoteSessions` | `true` | Don't run in Remote Desktop sessions (they have no internal display). |
 | `AllowSystemTokenFallback` | `false` | See [Standard users](#standard-users-allowsystemtokenfallback). |
 | `AgentRestartBackoffSeconds` | `2, 5, 15, 60` | Wait before restarting a crashed agent; the last value repeats. |
@@ -142,11 +151,57 @@ HelloAnchor runs elevated code, so it is deliberately conservative:
 A standard (non-admin) user has no elevated token, so by default no agent is started for them and a
 warning is logged once. The prompt can't be moved from their unelevated session anyway.
 
-Setting `AllowSystemTokenFallback` to `true` makes the service run the agent **as SYSTEM** on that user's
-desktop instead. This works, but it puts a SYSTEM process on a desktop that a less-privileged user
+**When you need it:** only when the people using Windows Hello on the machine sign in with **standard
+(non-administrator) accounts**, which is common on company-managed laptops.
+
+| Signed-in account | Agent runs as | Fallback needed? |
+|---|---|---|
+| Local administrator (normal UAC) | The user's own elevated token | **No** |
+| Administrator with UAC off, or the built-in Administrator | The user's own token (already elevated) | **No** |
+| Standard user | Nothing by default; SYSTEM if the fallback is on | **Yes** |
+| Administrator with Windows 11 *Administrator Protection* enabled | May behave like a standard user (see [Limitations](#limitations)) | Possibly |
+
+If every account on the machine is an administrator, leave it off: the fallback is never used for
+administrators, even when it is enabled, so turning it on would add risk with no benefit. On a machine
+with both kinds of account, only the standard users are affected.
+
+Setting `AllowSystemTokenFallback` to `true` makes the service run the agent **as SYSTEM** on a standard
+user's desktop instead. This works, but it puts a SYSTEM process on a desktop that a less-privileged user
 controls. **That is a weaker security boundary.** Only turn it on for machines where you accept that
 trade-off. As an extra safeguard, the service ignores the setting unless the configuration folder and
 file are owned by Administrators/SYSTEM and aren't writable by anyone else.
+
+> **Setting it at install time.** An administrator can choose this setting with the MSI property
+> `ALLOWSYSTEMTOKENFALLBACK` (`0` or `1`, default `0`):
+>
+> ```powershell
+> msiexec /i Boris.HelloAnchor-x.y.z-x64.msi ALLOWSYSTEMTOKENFALLBACK=1
+> ```
+>
+> The installer writes it into `config.json` and remembers it for upgrades and repairs, so later upgrades
+> keep the value unless you pass the property again. Because the installer re-applies the remembered value
+> on every upgrade, change this setting with the property rather than by hand-editing `config.json`.
+
+**Risks of enabling it, especially at install time:**
+
+- **Weaker isolation.** Every standard-user account that signs in gets an agent running as SYSTEM, the most
+  privileged account on the machine, on a desktop that the user controls. A bug in the agent, or in how
+  Windows isolates it, would then be a path from a standard account to SYSTEM. With the default (`0`)
+  there is no such process.
+- **It applies to every standard user on the machine.** The setting is machine-wide. You can't enable it
+  for one person, and on shared or multi-user machines every standard account that signs in is covered.
+- **It spreads with your deployment.** Put into an Intune/SCCM/GPO command line, it is enabled on every
+  targeted device at once. Scope the deployment to machines that genuinely have standard-user Hello users.
+- **It persists silently.** Later upgrades keep it on without the property appearing on their command line,
+  so it's easy to forget it was ever enabled. Record the decision where your team will see it.
+- **Hand edits are overwritten.** An upgrade or repair re-applies the remembered installer value to
+  `config.json`, so a manual change can quietly revert.
+- **The admin-account alternative is safer.** If the user can be a local administrator, HelloAnchor works
+  with the default setting and no SYSTEM process is involved.
+
+To turn it off again, upgrade with `ALLOWSYSTEMTOKENFALLBACK=0`. The upgrade stops and restarts the
+service, which also stops any running agents, so no SYSTEM agent is running once it finishes. Uninstalling
+also stops everything, but leaves `config.json` behind with whatever value it had.
 
 Please report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 
@@ -157,6 +212,9 @@ Please report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
 - Windows 11 *Administrator Protection* changes how elevation works. HelloAnchor may not be able to get
   an elevated token for your account with it enabled; this is still being verified.
 - x64 only for now. ARM64 support is planned (the build is structured for it).
+- Standard (non-admin) accounts get no agent unless `AllowSystemTokenFallback` is enabled (see
+  [Standard users](#standard-users-allowsystemtokenfallback) and
+  [`docs/STANDARD-USERS.md`](docs/STANDARD-USERS.md)).
 
 ---
 

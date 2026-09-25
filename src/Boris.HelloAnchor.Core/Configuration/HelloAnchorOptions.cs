@@ -45,7 +45,7 @@ public sealed record HelloAnchorOptions
     public IReadOnlyList<string> TargetWindowClasses { get; init; } = ["Credential Dialog Xaml Host"];
 
     /// <summary>Delays, in milliseconds after handling a prompt, at which its position is re-checked. Sorted ascending.</summary>
-    public IReadOnlyList<int> VerifyDelaysMs { get; init; } = [150, 300, 600];
+    public IReadOnlyList<int> VerifyDelaysMs { get; init; } = [150, 300, 600, 1000, 2000];
 
     /// <summary>Whether to skip RDP sessions when launching agents.</summary>
     public bool SkipRemoteSessions { get; init; } = true;
