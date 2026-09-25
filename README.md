@@ -2,6 +2,8 @@
 
 **Keeps the Windows Hello / "Windows Security" prompt on your laptop's built-in screen, where the face-recognition camera is.**
 
+<a href="https://buymeacoffee.com/andrewbadge"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="60" width="217"></a>
+
 When a laptop is docked to an external monitor, Windows often shows the Hello credential prompt (passkeys,
 credential prompts, some sign-in confirmations) on the external screen. The IR camera then can't see your
 face, so you end up typing a PIN. HelloAnchor watches for that prompt and moves it to the laptop panel
@@ -214,7 +216,26 @@ is needed. `tools/Move-HelloPrompt.ps1` is the original one-shot experiment.
 ### Versioning
 
 The single version number is in `Directory.Build.props`. It must be `major.minor.build` (MSI ignores a
-fourth part).
+fourth part), and it must go **up** for an installed copy to upgrade. Raise it in any PR that changes
+what ships:
+
+| Bump | When |
+|---|---|
+| **Major** | Breaking: a config setting renamed/removed or its meaning changed; install location, service name or data folder changed; Windows versions dropped; anything an admin must act on after upgrading. |
+| **Minor** | New backward-compatible capability: a new setting or `TargetDisplay` mode, a new platform (e.g. ARM64), noticeably new default behaviour. |
+| **Patch** | Fixes and internal changes: bug fixes, hardening without config changes, dependency bumps, performance, logging. |
+
+Docs-, test- and CI-only changes need no bump.
+
+### CI and releases (GitHub Actions)
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| **Build** (`build.yml`) | Push/PR to `main`, manual | Runs `build.ps1` (build, tests, MSI), checks the MSI with `tools/Test-Msi.ps1`, uploads it as an artifact. On PRs, warns if shipped files changed but `<Version>` didn't. |
+| **Release** (`release.yml`) | Manual only | Reads the version from `Directory.Build.props`, refuses to go backwards or reuse a tag, builds and verifies the MSI, then creates tag `vX.Y.Z` and a GitHub Release with the MSI and a SHA-256 checksum. |
+| **Cleanup old artifacts** (`cleanup-artifacts.yml`) | Daily, manual | Deletes build artifacts older than 7 days, always keeping the newest 3. Never touches release assets. |
+
+To release: merge a PR that raises `<Version>`, then run **Actions → Release → Run workflow**.
 
 ## Contributing
 
@@ -227,6 +248,13 @@ Issues and pull requests are welcome. Please:
 - run `.\build.ps1` before submitting. Warnings are treated as errors.
 
 By contributing you agree that your contribution is licensed under the project's licence (GPL-3.0-or-later).
+
+## Support the project
+
+HelloAnchor is free software. If it saves you typing your PIN a few times a day, you can say thanks
+with a coffee:
+
+<a href="https://buymeacoffee.com/andrewbadge"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="60" width="217"></a>
 
 ## Licence
 

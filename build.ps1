@@ -24,6 +24,10 @@
 .PARAMETER Configuration
     Build configuration. Defaults to Release.
 
+.PARAMETER Version
+    Overrides <Version> from Directory.Build.props for this build only (major.minor.build). Used by CI to
+    stamp test builds; releases should change Directory.Build.props instead.
+
 .PARAMETER SkipTests
     Skip the unit tests.
 
@@ -48,6 +52,7 @@
 [CmdletBinding(DefaultParameterSetName = 'Unsigned')]
 param(
     [string] $Configuration = 'Release',
+    [string] $Version,
     [switch] $SkipTests,
 
     [Parameter(ParameterSetName = 'Thumbprint', Mandatory)]
@@ -119,14 +124,26 @@ function Invoke-Sign([string[]] $files) {
 }
 
 # The single shared version lives in Directory.Build.props.
-$version = (& dotnet msbuild (Join-Path $repoRoot 'src\Boris.HelloAnchor.Core\Boris.HelloAnchor.Core.csproj') -getProperty:Version).Trim()
+if ($Version) {
+    # An MSI ProductVersion is numeric major.minor.build; fail early rather than deep inside WiX.
+    if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+        throw "Version '$Version' is not major.minor.build (e.g. 1.2.3)."
+    }
+    $version = $Version
+}
+else {
+    $version = (& dotnet msbuild (Join-Path $repoRoot 'src\Boris.HelloAnchor.Core\Boris.HelloAnchor.Core.csproj') -getProperty:Version).Trim()
+}
+
+# Passed to every build/publish so assemblies and the MSI all carry the same version.
+$versionProperty = "-p:Version=$version"
 Write-Host "Boris HelloAnchor $version ($Configuration)" -ForegroundColor Green
 
 # Start from a clean publish folder so stale files never end up in the MSI.
 if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
 
 Invoke-Checked 'Restore' { dotnet restore $solution }
-Invoke-Checked 'Build' { dotnet build $solution -c $Configuration --no-restore }
+Invoke-Checked 'Build' { dotnet build $solution -c $Configuration --no-restore $versionProperty }
 
 if (-not $SkipTests) {
     Invoke-Checked 'Unit tests' { dotnet test --project $tests -c $Configuration --no-build }
@@ -135,7 +152,7 @@ if (-not $SkipTests) {
 foreach ($project in 'Boris.HelloAnchor.Service', 'Boris.HelloAnchor.Agent') {
     $path = Join-Path $repoRoot "src\$project\$project.csproj"
     Invoke-Checked "Publish $project" {
-        dotnet publish $path -c $Configuration -r win-x64 --self-contained -o $publishDir -p:PublishSingleFile=false -p:PublishTrimmed=false
+        dotnet publish $path -c $Configuration -r win-x64 --self-contained -o $publishDir -p:PublishSingleFile=false -p:PublishTrimmed=false $versionProperty
     }
 }
 
@@ -148,7 +165,7 @@ else {
     Write-Host '==> No certificate supplied; skipping code signing.' -ForegroundColor Yellow
 }
 
-Invoke-Checked 'Build installer' { dotnet build $installer -c Release "-p:PublishDir=$publishDir\" }
+Invoke-Checked 'Build installer' { dotnet build $installer -c Release "-p:PublishDir=$publishDir\" $versionProperty }
 
 $msi = Join-Path $artifacts "Boris.HelloAnchor-$version-x64.msi"
 if (-not (Test-Path $msi)) {

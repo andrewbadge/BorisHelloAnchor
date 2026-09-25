@@ -1,0 +1,170 @@
+name: Release
+
+# Publishes a GitHub Release with the MSI attached. Run manually from the Actions tab:
+# Actions -> Release -> "Run workflow".
+#
+# Releasing is deliberately a manual act rather than something a tag push triggers as a side effect.
+#
+# The version is NOT an input. It is read from <Version> in Directory.Build.props, which is the same
+# value stamped onto every assembly and into the MSI. To release a new version, raise <Version> in
+# Directory.Build.props (the Build workflow reminds you on the PR), merge that, then run this workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: 'Mark as a pre-release'
+        type: boolean
+        required: false
+        default: false
+      force:
+        description: 'Release even if this version is not higher than the latest existing release'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    # Windows is not a preference: the projects target net10.0-windows and WiX only runs on Windows.
+    runs-on: windows-latest
+
+    permissions:
+      contents: write # Create the tag and the release.
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # Needed to see existing tags for the ordering check below.
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Read version from Directory.Build.props
+        id: version
+        shell: pwsh
+        run: |
+          # The single source of truth: this same value is stamped onto every assembly and into the MSI,
+          # so a release can never claim a version the installed product disagrees with.
+          $props = 'Directory.Build.props'
+          $raw = ([xml](Get-Content $props)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+
+          if (-not $raw) {
+            Write-Error "No <Version> found in $props. That file is the source of truth for the release version."
+            exit 1
+          }
+
+          $version = "$raw".Trim()
+          Write-Host "Version from ${props}: $version"
+
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            Write-Error "'$version' in $props is not usable. Use major.minor.build, e.g. 1.1.0. An MSI ProductVersion cannot carry a suffix such as -rc1."
+            exit 1
+          }
+
+          # MSI limits: major and minor are at most 255, build at most 65535. Larger values are
+          # silently truncated by Windows, producing a package that upgrades unpredictably.
+          $parts = $version.Split('.') | ForEach-Object { [int]$_ }
+          if ($parts[0] -gt 255 -or $parts[1] -gt 255 -or $parts[2] -gt 65535) {
+            Write-Error "Version $version exceeds MSI limits (255.255.65535)."
+            exit 1
+          }
+
+          $tag = "v$version"
+
+          if (git tag --list $tag) {
+            Write-Error "Tag $tag already exists. Raise <Version> in Directory.Build.props, or delete the existing tag and release first."
+            exit 1
+          }
+
+          # MajorUpgrade will not replace an installed copy unless the version increases, so a
+          # release that goes backwards would install but never supersede anything.
+          $existing = git tag --list 'v*' |
+            ForEach-Object { $_ -replace '^v', '' } |
+            Where-Object { $_ -match '^\d+\.\d+\.\d+$' } |
+            ForEach-Object { [version]$_ } |
+            Sort-Object -Descending |
+            Select-Object -First 1
+
+          if ($existing) {
+            Write-Host "Latest existing release: v$existing"
+            if ([version]$version -le $existing) {
+              if ('${{ github.event.inputs.force }}' -ne 'true') {
+                Write-Error "Version $version is not higher than the latest release ($existing). Installed copies would not upgrade. Raise <Version> in Directory.Build.props, or re-run with 'force' if this is deliberate."
+                exit 1
+              }
+              Write-Warning "Version $version is not higher than $existing, continuing because force was set."
+            }
+          } else {
+            Write-Host "No previous release found; this is the first."
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          Write-Host "Releasing $tag"
+
+      # The same script developers run, including the unit tests: shipping an MSI built from code that
+      # fails its own tests is not a trade worth making for a minute of runtime. No -Version override:
+      # the build takes it from Directory.Build.props, and the verification below checks that value
+      # all the way through to the MSI.
+      - name: Build, test and package
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Verify the MSI looks right
+        shell: pwsh
+        run: ./tools/Test-Msi.ps1 -Path artifacts/Boris.HelloAnchor-${{ steps.version.outputs.version }}-x64.msi -ExpectedVersion ${{ steps.version.outputs.version }}
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $tag = '${{ steps.version.outputs.tag }}'
+
+          # build.ps1 already names the MSI after the version, so downloads stay distinguishable.
+          $asset = "artifacts/Boris.HelloAnchor-$version-x64.msi"
+          $assetName = Split-Path $asset -Leaf
+
+          # A checksum file lets people verify the download (the MSI is not code-signed by CI).
+          $hash = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+          $checksums = "artifacts/SHA256SUMS.txt"
+          "$hash  $assetName" | Set-Content -Path $checksums -Encoding ascii
+
+          # Built as an array rather than a here-string: PowerShell treats a backtick as an escape
+          # character, so markdown code spans inside a here-string would be silently mangled.
+          # Written to a file and passed with --notes-file to avoid multi-line argument quoting.
+          $notes = @(
+            'Windows installer for Boris HelloAnchor: keeps the Windows Hello prompt on the laptop''s built-in display.',
+            '',
+            "**Install:** run $assetName as an administrator. It installs per-machine to Program Files and",
+            'registers the Boris HelloAnchor service (LocalSystem, automatic start), which starts an elevated',
+            'agent in each signed-in session. Existing installs are upgraded in place and your',
+            'config.json is kept.',
+            '',
+            '**Requirements:** Windows 10/11 x64 and a local administrator account (standard users are not',
+            'supported by default; see AllowSystemTokenFallback in the README). No .NET install is needed.',
+            '',
+            "**Verify the download:** SHA-256 $hash (also in SHA256SUMS.txt).",
+            '',
+            'Free software under the GNU GPL v3 or later; the source for this release is the tagged commit.',
+            'Bundles the .NET runtime (MIT) and Serilog (Apache-2.0); see THIRD-PARTY-NOTICES.md.',
+            'An independent project, not affiliated with Microsoft.'
+          )
+          Set-Content -Path release-notes.md -Value $notes -Encoding utf8
+
+          # gh creates the tag at the checked-out commit, so there is no separate tag push to get
+          # out of step with the release.
+          $arguments = @($tag, $asset, $checksums, '--title', $tag, '--notes-file', 'release-notes.md', '--target', $env:GITHUB_SHA)
+          if ('${{ github.event.inputs.prerelease }}' -eq 'true') { $arguments += '--prerelease' }
+
+          gh release create @arguments
+
+          "### Released $tag" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "Asset: $assetName" >> $env:GITHUB_STEP_SUMMARY
+          "SHA-256: $hash" >> $env:GITHUB_STEP_SUMMARY
