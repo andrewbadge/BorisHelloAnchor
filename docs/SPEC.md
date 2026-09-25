@@ -33,7 +33,7 @@ Therefore the design is: a **LocalSystem service** that launches an **elevated a
                                │ CreateProcessAsUser (winsta0\default)
 ┌──────────────────────────────▼──── User session N ──────────────┐
 │ Boris.HelloAnchor.Agent  (high integrity, no UI, WinExe)        │
-│  - SetWinEventHook(EVENT_OBJECT_SHOW)                           │
+│  - SetWinEventHook(EVENT_OBJECT_SHOW, EVENT_OBJECT_UNCLOAKED)   │
 │  - Filters for CredentialUIBroker / Credential Dialog Xaml Host │
 │  - Resolves the internal display, centres the prompt on it      │
 │  - Verifies the move stuck; retries per config                  │
@@ -88,7 +88,7 @@ Configuration lives in a single JSON file shared by the service and agent:
     "TargetDeviceName": null,
     "TargetProcessNames": [ "CredentialUIBroker" ],
     "TargetWindowClasses": [ "Credential Dialog Xaml Host" ],
-    "VerifyDelaysMs": [ 150, 300, 600 ],
+    "VerifyDelaysMs": [ 150, 300, 600, 1000, 2000 ],
     "SkipRemoteSessions": true,
     "AllowSystemTokenFallback": false,
     "AgentRestartBackoffSeconds": [ 2, 5, 15, 60 ],
@@ -214,7 +214,11 @@ On service stop:
 ### 7.2 Main loop
 
 1. Open `Global\Boris.HelloAnchor.Shutdown` with `SYNCHRONIZE`. If it can't be opened, log it and continue (dev runs without the service).
-2. `SetWinEventHook(EVENT_OBJECT_SHOW, EVENT_OBJECT_SHOW, 0, callback, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS)`.
+2. Two hooks sharing one callback, each `SetWinEventHook(evt, evt, 0, callback, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS)`:
+   - `EVENT_OBJECT_SHOW`: the prompt window is created and shown. It is usually still **cloaked** (invisible) and full-screen sized at this point.
+   - `EVENT_OBJECT_UNCLOAKED`: the prompt becomes visible. **CredentialUIBroker sizes the dialog and re-centres it on the primary monitor at this moment** (observed ~0.7 s after SHOW, varying between runs), undoing any earlier move. Handling this event runs the same move-and-verify cycle again after that re-centre, so correctness doesn't depend on a verify delay happening to fall after it. (Found in testing: with SHOW alone, a prompt that finished loading after the last verify check was left on the external monitor.)
+   - Separate hooks rather than one range, because the SHOW..UNCLOAKED range includes `EVENT_OBJECT_LOCATIONCHANGE`, which fires constantly for every window.
+   - A repeat arrival for an already-tracked window restarts its cycle, carrying over the move count and whether the agent has moved it.
    - **Keep the callback delegate in a static field** so it's never garbage-collected.
 3. Pump messages with `MsgWaitForMultipleObjectsEx` on the shutdown event (`QS_ALLINPUT`, `MWMO_INPUTAVAILABLE`), then `PeekMessage`/`TranslateMessage`/`DispatchMessage`. Exit when the event is signalled or `WM_QUIT` arrives.
 4. On exit: `UnhookWinEvent`, flush logs.
@@ -232,7 +236,7 @@ Proceed only if all of these are true:
 - `GetClassName` matches one of `TargetWindowClasses`
 - The owning process (`GetWindowThreadProcessId` → `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` → `QueryFullProcessImageName`) matches one of `TargetProcessNames`. Cache PID→name keyed on **PID + process creation time** (`GetProcessTimes`), because PIDs are reused.
 
-Check cheap conditions first (object IDs, then top-level, then class name) because `EVENT_OBJECT_SHOW` fires for every window on the desktop. Keep the callback fast; no file I/O except logging.
+Check cheap conditions first (object IDs, then top-level, then class name) because `EVENT_OBJECT_SHOW` and `EVENT_OBJECT_UNCLOAKED` fire for every window on the desktop. Keep the callback fast; no file I/O except logging.
 
 ### 7.4 Resolving the target display
 
@@ -262,7 +266,7 @@ If no matching display exists (lid closed, internal panel disabled), log at Debu
 
 ### 7.6 Agent NativeMethods.txt (starting point)
 
-`SetWinEventHook`, `UnhookWinEvent`, `MsgWaitForMultipleObjectsEx`, `PeekMessage`, `TranslateMessage`, `DispatchMessage`, `GetClassName`, `GetWindowThreadProcessId`, `OpenProcess`, `QueryFullProcessImageName`, `GetProcessTimes`, `ProcessIdToSessionId`, `GetAncestor`, `IsWindow`, `GetWindowRect`, `SetWindowPos`, `EnumDisplayMonitors`, `GetMonitorInfo`, `MONITORINFOEXW`, `GetDisplayConfigBufferSizes`, `QueryDisplayConfig`, `DisplayConfigGetDeviceInfo`, `DISPLAYCONFIG_SOURCE_DEVICE_NAME`, `EVENT_OBJECT_SHOW`, `WINEVENT_OUTOFCONTEXT`, `WINEVENT_SKIPOWNPROCESS`.
+`SetWinEventHook`, `UnhookWinEvent`, `MsgWaitForMultipleObjectsEx`, `PeekMessage`, `TranslateMessage`, `DispatchMessage`, `GetClassName`, `GetWindowThreadProcessId`, `OpenProcess`, `QueryFullProcessImageName`, `GetProcessTimes`, `ProcessIdToSessionId`, `GetAncestor`, `IsWindow`, `GetWindowRect`, `SetWindowPos`, `EnumDisplayMonitors`, `GetMonitorInfo`, `MONITORINFOEXW`, `GetDisplayConfigBufferSizes`, `QueryDisplayConfig`, `DisplayConfigGetDeviceInfo`, `DISPLAYCONFIG_SOURCE_DEVICE_NAME`, `EVENT_OBJECT_SHOW`, `EVENT_OBJECT_UNCLOAKED`, `WINEVENT_OUTOFCONTEXT`, `WINEVENT_SKIPOWNPROCESS`.
 
 (Named event and mutex access may use the .NET `EventWaitHandle` / `Mutex` types.)
 

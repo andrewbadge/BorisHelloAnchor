@@ -65,23 +65,19 @@ internal sealed class AgentRuntime
         s_instance = this;
         s_hookProc = OnWinEvent;
 
-        // Out-of-context, all processes/threads, and skip our own windows.
-        using var hook = PInvoke.SetWinEventHook(
-            PInvoke.EVENT_OBJECT_SHOW,
-            PInvoke.EVENT_OBJECT_SHOW,
-            null,
-            s_hookProc,
-            0,
-            0,
-            PInvoke.WINEVENT_OUTOFCONTEXT | PInvoke.WINEVENT_SKIPOWNPROCESS);
+        // Two hooks sharing one callback:
+        //  - SHOW: the prompt window is created and shown. At this point it is often still cloaked
+        //    (invisible) and full-screen sized while its XAML content loads.
+        //  - UNCLOAKED: the prompt becomes visible. CredentialUIBroker sizes the dialog and re-centres it on
+        //    the primary monitor at this moment (observed ~0.7 s after SHOW, varying from run to run), which
+        //    undoes any earlier move. Handling this event re-anchors it after that re-centre, however long
+        //    loading took, instead of relying on the verify delays happening to straddle it.
+        // Separate hooks rather than one SHOW..UNCLOAKED range, because that range would include
+        // EVENT_OBJECT_LOCATIONCHANGE, which fires constantly for every window on the desktop.
+        using var showHook = InstallHook(PInvoke.EVENT_OBJECT_SHOW);
+        using var uncloakedHook = InstallHook(PInvoke.EVENT_OBJECT_UNCLOAKED);
 
-        if (hook.IsInvalid)
-        {
-            // SetWinEventHook does not set a last-error code, so there is nothing more specific to report.
-            throw new InvalidOperationException("SetWinEventHook failed.");
-        }
-
-        _logger.LogInformation("WinEvent hook installed; waiting for credential prompts.");
+        _logger.LogInformation("WinEvent hooks installed; waiting for credential prompts.");
 
         try
         {
@@ -89,9 +85,34 @@ internal sealed class AgentRuntime
         }
         finally
         {
-            // The using declaration unhooks (UnhookWinEvent) when this method returns.
-            _logger.LogInformation("Message loop exited; removing hook.");
+            // The using declarations unhook (UnhookWinEvent) when this method returns.
+            _logger.LogInformation("Message loop exited; removing hooks.");
         }
+    }
+
+    /// <summary>
+    /// Installs an out-of-context WinEvent hook for a single event, for all processes and threads, skipping
+    /// the agent's own windows. All hooks share the static <see cref="s_hookProc"/> callback.
+    /// </summary>
+    /// <param name="eventId">The event to hook, e.g. <c>EVENT_OBJECT_SHOW</c>.</param>
+    private static UnhookWinEventSafeHandle InstallHook(uint eventId)
+    {
+        var hook = PInvoke.SetWinEventHook(
+            eventId,
+            eventId,
+            null,
+            s_hookProc!,
+            0,
+            0,
+            PInvoke.WINEVENT_OUTOFCONTEXT | PInvoke.WINEVENT_SKIPOWNPROCESS);
+
+        if (hook.IsInvalid)
+        {
+            // SetWinEventHook does not set a last-error code, so there is nothing more specific to report.
+            throw new InvalidOperationException($"SetWinEventHook(0x{eventId:X}) failed.");
+        }
+
+        return hook;
     }
 
     /// <summary>
@@ -172,7 +193,10 @@ internal sealed class AgentRuntime
             var options = instance._config.Current;
             if (instance._filter.IsTarget(hwnd, idObject, idChild, options))
             {
-                instance._logger.LogDebug("Credential prompt shown: {Hwnd}.", hwnd.Format());
+                // Both events are handled the same way: a repeat for an already-tracked prompt restarts its
+                // move-and-verify cycle from now (PromptAnchor keeps the running move count).
+                var trigger = eventType == PInvoke.EVENT_OBJECT_UNCLOAKED ? "uncloaked" : "shown";
+                instance._logger.LogDebug("Credential prompt {Trigger}: {Hwnd}.", trigger, hwnd.Format());
                 instance._anchor.OnPromptShown(hwnd);
             }
         }
