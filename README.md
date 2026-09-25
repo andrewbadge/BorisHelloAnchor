@@ -161,7 +161,8 @@ Please report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
   an elevated token for your account with it enabled; this is still being verified.
 - x64 only for now. ARM64 support is planned (the build is structured for it).
 - The installer can't set `AllowSystemTokenFallback`; it has to be changed in `config.json` after
-  installing (see [Standard users](#standard-users-allowsystemtokenfallback)).
+  installing (see [Standard users](#standard-users-allowsystemtokenfallback) and
+  [`docs/STANDARD-USERS.md`](docs/STANDARD-USERS.md)).
 
 ---
 

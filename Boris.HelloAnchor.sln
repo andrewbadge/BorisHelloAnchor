@@ -33,6 +33,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{8E4F2A19-6B3C-4D7E-A15F-2C9B8D0E3A22}"
 	ProjectSection(SolutionItems) = preProject
 		docs\SPEC.md = docs\SPEC.md
+		docs\STANDARD-USERS.md = docs\STANDARD-USERS.md
 		docs\TESTING.md = docs\TESTING.md
 	EndProjectSection
 EndProject
