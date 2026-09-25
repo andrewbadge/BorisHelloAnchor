@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Shared library: configuration, paths/names, logging setup and the pure (unit-tested) logic used by
+    both the Service and the Agent. Deliberately free of P/Invoke so it can be tested anywhere.
+  -->
+  <PropertyGroup>
+    <RootNamespace>Boris.HelloAnchor.Core</RootNamespace>
+    <!-- A library does not need a RID; clearing it keeps the output platform-neutral for tests. -->
+    <RuntimeIdentifier></RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Extensions.Logging" />
+    <PackageReference Include="Serilog.Sinks.File" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Allow the test project to exercise internal helpers. -->
+    <InternalsVisibleTo Include="Boris.HelloAnchor.Tests" />
+  </ItemGroup>
+</Project>

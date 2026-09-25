@@ -1,0 +1,26 @@
+# Editor settings shared by Visual Studio, Rider and VS Code.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,xml,csproj,wixproj,props,targets,wxs,manifest,yml,yaml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+# File-scoped namespaces, 'var' where the type is apparent, braces always.
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_prefer_braces = true:warning
+dotnet_sort_system_directives_first = true
+
+# Every source file starts with the GPL SPDX header.
+file_header_template = Copyright (C) 2026 Boris HelloAnchor contributors\nSPDX-License-Identifier: GPL-3.0-or-later\n\nThis file is part of Boris.HelloAnchor. It is free software: you can redistribute it and/or modify it\nunder the terms of the GNU General Public License as published by the Free Software Foundation, either\nversion 3 of the License, or (at your option) any later version. See the LICENSE file for details.

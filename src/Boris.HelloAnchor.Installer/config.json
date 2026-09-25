@@ -1,0 +1,13 @@
+{
+  "HelloAnchor": {
+    "TargetDisplay": "Internal",
+    "TargetDeviceName": null,
+    "TargetProcessNames": [ "CredentialUIBroker" ],
+    "TargetWindowClasses": [ "Credential Dialog Xaml Host" ],
+    "VerifyDelaysMs": [ 150, 300, 600 ],
+    "SkipRemoteSessions": true,
+    "AllowSystemTokenFallback": false,
+    "AgentRestartBackoffSeconds": [ 2, 5, 15, 60 ],
+    "LogLevel": "Information"
+  }
+}

@@ -1,0 +1,80 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Boris.HelloAnchor.Core", "src\Boris.HelloAnchor.Core\Boris.HelloAnchor.Core.csproj", "{A979723A-06FD-4DB2-BCB2-EDBFD7BB1F88}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Boris.HelloAnchor.Service", "src\Boris.HelloAnchor.Service\Boris.HelloAnchor.Service.csproj", "{6510E2C3-3F7E-4D5C-AFCF-1F3DE488CD87}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Boris.HelloAnchor.Agent", "src\Boris.HelloAnchor.Agent\Boris.HelloAnchor.Agent.csproj", "{A08FD5CB-F330-426E-8962-E24ACB2A7612}"
+EndProject
+Project("{B7DD6F7E-DEF8-4E67-B5B7-07EF123DB6F0}") = "Boris.HelloAnchor.Installer", "src\Boris.HelloAnchor.Installer\Boris.HelloAnchor.Installer.wixproj", "{DB0637E7-3551-482F-A7EE-0865E08DEBEE}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Boris.HelloAnchor.Tests", "tests\Boris.HelloAnchor.Tests\Boris.HelloAnchor.Tests.csproj", "{DB811CA3-A329-4A82-BAA6-6F48E456C333}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{5C1B6D7E-2A43-4F8B-9E21-7D6A3B8C0F11}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+		build.ps1 = build.ps1
+		Directory.Build.props = Directory.Build.props
+		Directory.Packages.props = Directory.Packages.props
+		global.json = global.json
+		LICENSE = LICENSE
+		README.md = README.md
+		SECURITY.md = SECURITY.md
+		THIRD-PARTY-NOTICES.md = THIRD-PARTY-NOTICES.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{8E4F2A19-6B3C-4D7E-A15F-2C9B8D0E3A22}"
+	ProjectSection(SolutionItems) = preProject
+		docs\SPEC.md = docs\SPEC.md
+		docs\TESTING.md = docs\TESTING.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{3D7A9C1B-8E25-4F60-B4A3-9F1E2D6C5B33}"
+	ProjectSection(SolutionItems) = preProject
+		tools\Move-HelloPrompt.ps1 = tools\Move-HelloPrompt.ps1
+		tools\New-ProductIcon.ps1 = tools\New-ProductIcon.ps1
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A979723A-06FD-4DB2-BCB2-EDBFD7BB1F88}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A979723A-06FD-4DB2-BCB2-EDBFD7BB1F88}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A979723A-06FD-4DB2-BCB2-EDBFD7BB1F88}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A979723A-06FD-4DB2-BCB2-EDBFD7BB1F88}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6510E2C3-3F7E-4D5C-AFCF-1F3DE488CD87}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6510E2C3-3F7E-4D5C-AFCF-1F3DE488CD87}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6510E2C3-3F7E-4D5C-AFCF-1F3DE488CD87}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6510E2C3-3F7E-4D5C-AFCF-1F3DE488CD87}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A08FD5CB-F330-426E-8962-E24ACB2A7612}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A08FD5CB-F330-426E-8962-E24ACB2A7612}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A08FD5CB-F330-426E-8962-E24ACB2A7612}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A08FD5CB-F330-426E-8962-E24ACB2A7612}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DB0637E7-3551-482F-A7EE-0865E08DEBEE}.Debug|Any CPU.ActiveCfg = Release|x64
+		{DB0637E7-3551-482F-A7EE-0865E08DEBEE}.Release|Any CPU.ActiveCfg = Release|x64
+		{DB811CA3-A329-4A82-BAA6-6F48E456C333}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DB811CA3-A329-4A82-BAA6-6F48E456C333}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DB811CA3-A329-4A82-BAA6-6F48E456C333}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DB811CA3-A329-4A82-BAA6-6F48E456C333}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A979723A-06FD-4DB2-BCB2-EDBFD7BB1F88} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{6510E2C3-3F7E-4D5C-AFCF-1F3DE488CD87} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{A08FD5CB-F330-426E-8962-E24ACB2A7612} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{DB0637E7-3551-482F-A7EE-0865E08DEBEE} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{DB811CA3-A329-4A82-BAA6-6F48E456C333} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+	EndGlobalSection
+EndGlobal

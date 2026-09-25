@@ -1,0 +1,37 @@
+// Win32 APIs used by the agent (SPEC §7.6). CsWin32 generates a P/Invoke for each line.
+// Hook and message pump
+SetWinEventHook
+UnhookWinEvent
+MsgWaitForMultipleObjectsEx
+PeekMessage
+TranslateMessage
+DispatchMessage
+EVENT_OBJECT_SHOW
+WINEVENT_OUTOFCONTEXT
+WINEVENT_SKIPOWNPROCESS
+OBJECT_IDENTIFIER
+CHILDID_SELF
+WM_QUIT
+// Window filtering
+GetClassName
+GetWindowThreadProcessId
+GetAncestor
+IsWindow
+OpenProcess
+QueryFullProcessImageName
+GetProcessTimes
+ProcessIdToSessionId
+GetCurrentProcessId
+// Moving
+GetWindowRect
+SetWindowPos
+// Display resolution
+EnumDisplayMonitors
+GetMonitorInfo
+MONITORINFOEXW
+MONITORINFOF_PRIMARY
+GetDisplayConfigBufferSizes
+QueryDisplayConfig
+DisplayConfigGetDeviceInfo
+DISPLAYCONFIG_SOURCE_DEVICE_NAME
+WIN32_ERROR

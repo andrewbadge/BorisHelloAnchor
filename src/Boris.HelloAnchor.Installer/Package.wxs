@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (C) 2026 Boris HelloAnchor contributors
+  SPDX-License-Identifier: GPL-3.0-or-later
+
+  Boris HelloAnchor installer definition (SPEC §8.2).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <!--
+    UpgradeCode is fixed forever: every version shares it so MajorUpgrade can find and replace older installs.
+    Never change it.
+  -->
+  <Package Name="Boris HelloAnchor"
+           Manufacturer="Boris"
+           Version="$(var.ProductVersion)"
+           UpgradeCode="5616EF1D-6C1C-42C6-8C9D-CDBA78CAD767"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed. Uninstall it first if you really want to install this older version." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Add/Remove Programs entry. -->
+    <Icon Id="ProductIcon" SourceFile="HelloAnchor.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
+    <Property Id="ARPHELPLINK" Value="https://github.com/andrewbadge/BorisHelloAnchor" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/andrewbadge/BorisHelloAnchor" />
+    <Property Id="ARPCOMMENTS" Value="Keeps the Windows Hello prompt on the laptop's internal display. Free software under the GNU GPL v3 or later." />
+
+    <!-- C:\Program Files\Boris\HelloAnchor -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="CompanyFolder" Name="Boris">
+        <Directory Id="INSTALLFOLDER" Name="HelloAnchor" />
+      </Directory>
+    </StandardDirectory>
+
+    <!-- C:\ProgramData\Boris\HelloAnchor (config) and ...\logs -->
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataCompanyFolder" Name="Boris">
+        <Directory Id="DATAFOLDER" Name="HelloAnchor">
+          <Directory Id="LOGFOLDER" Name="logs" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Title="Boris HelloAnchor" Level="1">
+      <ComponentGroupRef Id="ProgramFiles" />
+      <ComponentGroupRef Id="ServiceComponents" />
+      <ComponentGroupRef Id="DataFolders" />
+    </Feature>
+  </Package>
+
+  <Fragment>
+    <!--
+      Everything published for Service + Agent (runtime, dependencies, Agent.exe, ...), harvested
+      automatically. The service executable is excluded because it needs its own component to carry
+      ServiceInstall/ServiceControl.
+    -->
+    <ComponentGroup Id="ProgramFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PublishDir)**">
+        <Exclude Files="$(var.PublishDir)Boris.HelloAnchor.Service.exe" />
+        <!-- Debug symbols and XML API docs are not shipped. -->
+        <Exclude Files="$(var.PublishDir)**\*.pdb" />
+        <Exclude Files="$(var.PublishDir)**\*.xml" />
+      </Files>
+
+      <!-- The licence and third-party notices travel with the binaries (GPL §4 / §6). -->
+      <!-- One file per component so WiX can generate stable component GUIDs for these unversioned files. -->
+      <Component Id="LicenseFile">
+        <File Id="LicenseFile" Source="$(var.RepoRoot)LICENSE" Name="LICENSE.txt" KeyPath="yes" />
+      </Component>
+      <Component Id="NoticesFile">
+        <File Id="NoticesFile" Source="$(var.RepoRoot)THIRD-PARTY-NOTICES.md" Name="THIRD-PARTY-NOTICES.md" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ServiceComponents" Directory="INSTALLFOLDER">
+      <!-- The service itself (SPEC §8.2). -->
+      <Component Id="ServiceExecutable">
+        <File Id="ServiceExe" Source="$(var.PublishDir)Boris.HelloAnchor.Service.exe" KeyPath="yes" />
+
+        <ServiceInstall Id="HelloAnchorServiceInstall"
+                        Name="Boris.HelloAnchor"
+                        DisplayName="Boris HelloAnchor"
+                        Description="Keeps the Windows Hello prompt on the laptop's internal display."
+                        Type="ownProcess"
+                        Start="auto"
+                        ErrorControl="normal"
+                        Account="LocalSystem"
+                        Vital="yes">
+          <!-- Restart on every failure after 10 s; reset the failure count daily. -->
+          <util:ServiceConfig FirstFailureActionType="restart"
+                              SecondFailureActionType="restart"
+                              ThirdFailureActionType="restart"
+                              RestartServiceDelayInSeconds="10"
+                              ResetPeriodInDays="1" />
+        </ServiceInstall>
+
+        <ServiceControl Id="HelloAnchorServiceControl"
+                        Name="Boris.HelloAnchor"
+                        Start="install"
+                        Stop="both"
+                        Remove="uninstall"
+                        Wait="yes" />
+      </Component>
+
+      <!-- Event Log source used by the service (SPEC §6.1, §8.2). -->
+      <Component Id="EventLogSource">
+        <util:EventSource Name="Boris.HelloAnchor"
+                          Log="Application"
+                          EventMessageFile="[WindowsFolder]Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll"
+                          KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <!--
+      ProgramData folders (SPEC §8.2). PermissionEx with Sddl (MsiLockPermissionsEx) replaces the whole
+      security descriptor: owner Administrators, protected DACL (inheritance from %ProgramData% cut),
+      SYSTEM and Administrators full control, Users read & execute only.
+      The service re-applies the same protection at every start (DataFolderSecurity.Enforce), which also
+      covers a config.json a user created before installation.
+    -->
+    <ComponentGroup Id="DataFolders">
+      <Component Id="DataCompanyFolderAcl" Directory="DataCompanyFolder" Guid="AAFADE06-477D-44C8-84CC-7B182C98B8C6">
+        <CreateFolder>
+          <PermissionEx Sddl="O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)" />
+        </CreateFolder>
+      </Component>
+
+      <Component Id="DataFolderAcl" Directory="DATAFOLDER" Guid="F3456847-F739-4E67-9FB6-40BF90A5CD9F">
+        <CreateFolder>
+          <PermissionEx Sddl="O:BAD:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;0x1200a9;;;BU)" />
+        </CreateFolder>
+      </Component>
+
+      <Component Id="LogFolder" Directory="LOGFOLDER" Guid="BCE842C6-CDA9-4A0E-8538-C1A738D4A85C">
+        <CreateFolder />
+      </Component>
+
+      <!--
+        Default configuration. NeverOverwrite keeps user edits across upgrades; Permanent leaves it behind on
+        uninstall (SPEC §8.2).
+      -->
+      <Component Id="DefaultConfig" Directory="DATAFOLDER" NeverOverwrite="yes" Permanent="yes" Guid="628CBC37-0DA2-4967-9711-B267F04F3E89">
+        <File Id="ConfigJson" Source="config.json" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+</Wix>

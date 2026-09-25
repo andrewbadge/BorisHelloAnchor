@@ -1,0 +1,247 @@
+# Boris HelloAnchor
+
+**Keeps the Windows Hello / "Windows Security" prompt on your laptop's built-in screen, where the face-recognition camera is.**
+
+When a laptop is docked to an external monitor, Windows often shows the Hello credential prompt (passkeys,
+credential prompts, some sign-in confirmations) on the external screen. The IR camera then can't see your
+face, so you end up typing a PIN. HelloAnchor watches for that prompt and moves it to the laptop panel
+within a fraction of a second, without taking focus.
+
+- No UI, no tray icon, no network access, no telemetry.
+- Works with mixed display scaling (per-monitor DPI aware).
+- Follows docking, undocking and lid changes automatically.
+
+> HelloAnchor is an independent open-source project. It is not affiliated with or endorsed by Microsoft.
+> "Windows Hello" is a trademark of Microsoft Corporation.
+
+---
+
+## How it works
+
+Windows blocks a normal (medium-integrity) process from moving the prompt window: `SetWindowPos` fails with
+error 5 because of User Interface Privilege Isolation. An **elevated** process can move it. A Windows
+service can't do it directly, because services run in session 0 and can't see the user's desktop.
+
+HelloAnchor therefore has two parts:
+
+```
+┌──────────────────────── Session 0 ────────────────────────┐
+│ Boris.HelloAnchor.Service   (LocalSystem, auto-start)     │
+│  • tracks interactive sessions                            │
+│  • launches one Agent per session with the user's         │
+│    ELEVATED token; restarts it if it crashes              │
+└───────────────────────────┬───────────────────────────────┘
+                            │ CreateProcessAsUser
+┌───────────────────────────▼──────── User session ─────────┐
+│ Boris.HelloAnchor.Agent     (elevated, no UI)             │
+│  • hooks "window shown" events                            │
+│  • spots CredentialUIBroker's "Credential Dialog Xaml     │
+│    Host" window                                           │
+│  • centres it on the internal display and checks it stays │
+└───────────────────────────────────────────────────────────┘
+```
+
+The full design is in [`docs/SPEC.md`](docs/SPEC.md).
+
+## Requirements
+
+- Windows 10 or 11, x64.
+- A user account that is a **local administrator** (a normal UAC admin is fine: HelloAnchor uses the
+  elevated half of your token without showing a UAC prompt). Standard accounts are not supported by
+  default; see [Standard users](#standard-users-allowsystemtokenfallback).
+- No .NET install is needed: the runtime is bundled.
+
+## Install
+
+1. Download `Boris.HelloAnchor-x.y.z-x64.msi` from the Releases page (or [build it](#building-from-source)).
+2. Run it. The service `Boris HelloAnchor` is installed, set to start automatically, and started straight away.
+
+Check it is working:
+
+```powershell
+Get-Service Boris.HelloAnchor
+Get-Process Boris.HelloAnchor.Agent   # one per signed-in user
+```
+
+To see it in action, set your external monitor as the main display and register a passkey at
+<https://webauthn.io> with the camera covered. The prompt should jump to the laptop screen.
+
+### Uninstall
+
+Use **Settings → Apps → Installed apps → Boris HelloAnchor → Uninstall**. The service and program files
+are removed. `%ProgramData%\Boris\HelloAnchor` (your configuration and logs) is kept; delete it by hand if
+you don't need it.
+
+## Configuration
+
+Settings live in `%ProgramData%\Boris\HelloAnchor\config.json`. Only administrators can edit this file.
+Changes apply within about a second, with no restart needed.
+
+```json
+{
+  "HelloAnchor": {
+    "TargetDisplay": "Internal",
+    "TargetDeviceName": null,
+    "TargetProcessNames": [ "CredentialUIBroker" ],
+    "TargetWindowClasses": [ "Credential Dialog Xaml Host" ],
+    "VerifyDelaysMs": [ 150, 300, 600 ],
+    "SkipRemoteSessions": true,
+    "AllowSystemTokenFallback": false,
+    "AgentRestartBackoffSeconds": [ 2, 5, 15, 60 ],
+    "LogLevel": "Information"
+  }
+}
+```
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `TargetDisplay` | `Internal` | `Internal` (the built-in panel), `Primary` (Windows' main display), or `DeviceName`. |
+| `TargetDeviceName` | `null` | GDI name such as `\\.\DISPLAY1`, used when `TargetDisplay` is `DeviceName`. Useful for dual-screen laptops. |
+| `TargetProcessNames` | `CredentialUIBroker` | Processes whose windows are candidates (no `.exe`). |
+| `TargetWindowClasses` | `Credential Dialog Xaml Host` | Window classes that must also match. |
+| `VerifyDelaysMs` | `150, 300, 600` | After moving, re-check at these times and fix the position if it snapped back or was resized. |
+| `SkipRemoteSessions` | `true` | Don't run in Remote Desktop sessions (they have no internal display). |
+| `AllowSystemTokenFallback` | `false` | See [Standard users](#standard-users-allowsystemtokenfallback). |
+| `AgentRestartBackoffSeconds` | `2, 5, 15, 60` | Wait before restarting a crashed agent; the last value repeats. |
+| `LogLevel` | `Information` | `Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical` or `None`. |
+
+An invalid value only resets that one setting to its default, and a warning is logged. A broken file
+never stops the service.
+
+## Logs
+
+- Files: `%ProgramData%\Boris\HelloAnchor\logs\` contains `service-YYYYMMDD.log` and
+  `agent-s<session>-YYYYMMDD.log`. They roll daily and 14 days are kept.
+- Windows Event Log: **Application** log, source `Boris.HelloAnchor`, for start/stop, warnings and errors.
+
+Each handled prompt produces one line, for example:
+
+```
+Prompt 0x000A1B2C handled: display \\.\DISPLAY1, moves 1, outcome: centred.
+```
+
+## Security notes
+
+HelloAnchor runs elevated code, so it is deliberately conservative:
+
+- **Fixed agent path.** The service only ever launches `Boris.HelloAnchor.Agent.exe` from its own
+  Program Files folder, never a path from configuration or `PATH`.
+- **Protected configuration.** The installer, and the service on every start, reset
+  `%ProgramData%\Boris\HelloAnchor` so that only SYSTEM and Administrators can write to it.
+  Inheritance from `%ProgramData%` is cut. Files a standard user planted there, including hard links
+  and junctions, are removed.
+- **Agents die with the service.** Agents run inside a kill-on-close Job Object, so a crashed or killed
+  service never leaves agents behind.
+- **Minimal attack surface.** The agent has no windows, no IPC endpoint and no network access. Standard
+  users can wait on the shutdown signal but cannot trigger it.
+
+### Standard users (`AllowSystemTokenFallback`)
+
+A standard (non-admin) user has no elevated token, so by default no agent is started for them and a
+warning is logged once. The prompt can't be moved from their unelevated session anyway.
+
+Setting `AllowSystemTokenFallback` to `true` makes the service run the agent **as SYSTEM** on that user's
+desktop instead. This works, but it puts a SYSTEM process on a desktop that a less-privileged user
+controls. **That is a weaker security boundary.** Only turn it on for machines where you accept that
+trade-off. As an extra safeguard, the service ignores the setting unless the configuration folder and
+file are owned by Administrators/SYSTEM and aren't writable by anyone else.
+
+Please report vulnerabilities privately; see [`SECURITY.md`](SECURITY.md).
+
+## Limitations
+
+- UAC consent prompts and the lock/sign-in screen run on the secure desktop, which no application can
+  reach. They are out of scope.
+- Windows 11 *Administrator Protection* changes how elevation works. HelloAnchor may not be able to get
+  an elevated token for your account with it enabled; this is still being verified.
+- x64 only for now. ARM64 support is planned (the build is structured for it).
+
+---
+
+## Building from source
+
+### Prerequisites
+
+- **.NET 10 SDK** (the version is pinned loosely in `global.json`).
+- **Visual Studio 2022 17.14+ or Visual Studio 2026** with the ".NET desktop development" workload,
+  if you want to use the IDE.
+- To open the installer project in Visual Studio, install the free
+  [**HeatWave**](https://marketplace.visualstudio.com/items?itemName=FireGiant.FireGiantHeatWaveDev17)
+  extension. Command-line builds don't need it.
+
+### Visual Studio
+
+Open **`Boris.HelloAnchor.sln`**. It contains:
+
+| Project | What it is |
+|---|---|
+| `Boris.HelloAnchor.Core` | Shared library: config, logging, and the pure logic that is unit-tested. |
+| `Boris.HelloAnchor.Service` | The LocalSystem Windows service. |
+| `Boris.HelloAnchor.Agent` | The per-session elevated agent (WinExe, no UI). |
+| `Boris.HelloAnchor.Installer` | WiX v5 MSI project. It isn't built by a normal solution build because it needs the publish output; use `build.ps1`. |
+| `Boris.HelloAnchor.Tests` | xUnit v3 unit tests (Test Explorer). |
+
+### Command line
+
+```powershell
+.\build.ps1                                    # build, test, publish, package
+.\build.ps1 -SkipTests
+.\build.ps1 -CertificateThumbprint <sha1>     # also Authenticode-sign the EXEs and the MSI
+.\build.ps1 -PfxPath .\cert.pfx -PfxPassword (Read-Host -AsSecureString)
+```
+
+The installer is written to `artifacts\Boris.HelloAnchor-<version>-x64.msi`. Signing is optional and is
+skipped if no certificate is given.
+
+Tests on their own:
+
+```powershell
+dotnet test --project tests/Boris.HelloAnchor.Tests
+```
+
+### Running the agent without the service (development)
+
+From an **elevated** terminal:
+
+```powershell
+dotnet run --project src/Boris.HelloAnchor.Agent
+```
+
+It runs until you end it in Task Manager, logging to `%ProgramData%\Boris\HelloAnchor\logs`. From a
+non-elevated terminal it still runs, but every move fails with error 5, which demonstrates why elevation
+is needed. `tools/Move-HelloPrompt.ps1` is the original one-shot experiment.
+
+### Versioning
+
+The single version number is in `Directory.Build.props`. It must be `major.minor.build` (MSI ignores a
+fourth part).
+
+## Contributing
+
+Issues and pull requests are welcome. Please:
+
+- keep changes consistent with [`docs/SPEC.md`](docs/SPEC.md), or update the spec in the same PR;
+- comment new code the way existing code is commented (XML docs on every type and member, and
+  *why* comments for anything non-obvious);
+- start every new source file with the GPL header (`.editorconfig` has the template);
+- run `.\build.ps1` before submitting. Warnings are treated as errors.
+
+By contributing you agree that your contribution is licensed under the project's licence (GPL-3.0-or-later).
+
+## Licence
+
+Copyright © 2026 Boris HelloAnchor contributors.
+
+Boris HelloAnchor is free software: you can redistribute it and/or modify it under the terms of the
+**GNU General Public License** as published by the Free Software Foundation, either **version 3** of the
+License, or (at your option) any later version. It is distributed in the hope that it will be useful, but
+**without any warranty**; without even the implied warranty of merchantability or fitness for a particular
+purpose. See [`LICENSE`](LICENSE) for the full text.
+
+If you distribute builds (for example, an MSI), the GPL requires you to make the corresponding source
+available to recipients. Linking to the matching tagged release of this repository satisfies that.
+
+The installer bundles third-party components under their own compatible licences: the .NET runtime and
+Microsoft.Extensions libraries (MIT) and Serilog (Apache-2.0). See
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md). Both the licence and the notices are installed next to
+the program. The WiX Toolset used to build the installer is under MS-RL and is not redistributed.

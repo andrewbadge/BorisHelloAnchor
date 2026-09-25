@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Per-session agent (SPEC §7). Runs elevated in the user's session, hooks window-show events and
+    moves the Windows Hello prompt to the target display. WinExe so no console window ever appears.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Boris.HelloAnchor.Agent</RootNamespace>
+    <AssemblyName>Boris.HelloAnchor.Agent</AssemblyName>
+    <!-- Per-Monitor V2 DPI awareness lives in the manifest (SPEC §7.1). -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- CsWin32 generates pointer-based signatures. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Publish settings used by build.ps1 (SPEC §8.1): self-contained, not single-file, not trimmed. -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Boris.HelloAnchor.Core\Boris.HelloAnchor.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWin32" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="NativeMethods.txt" />
+    <AdditionalFiles Include="NativeMethods.json" />
+  </ItemGroup>
+</Project>

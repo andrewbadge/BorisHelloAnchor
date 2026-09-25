@@ -1,0 +1,35 @@
+// Win32 APIs used by the service (SPEC §6.6). CsWin32 generates a P/Invoke for each line.
+// Sessions
+WTSQueryUserToken
+WTSEnumerateSessions
+WTSFreeMemory
+WTSQuerySessionInformation
+WTS_CURRENT_SERVER_HANDLE
+// Tokens
+GetTokenInformation
+DuplicateTokenEx
+SetTokenInformation
+OpenProcessToken
+GetCurrentProcess
+TOKEN_ELEVATION_TYPE
+TOKEN_LINKED_TOKEN
+TOKEN_MANDATORY_LABEL
+// Process launch and supervision
+CreateProcessAsUser
+CreateEnvironmentBlock
+DestroyEnvironmentBlock
+ResumeThread
+TerminateProcess
+GetExitCodeProcess
+CloseHandle
+// Job object
+CreateJobObject
+SetInformationJobObject
+AssignProcessToJobObject
+JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+// Privileges (used to re-secure the ProgramData folder, SPEC §8.2)
+AdjustTokenPrivileges
+LookupPrivilegeValue
+TOKEN_PRIVILEGES
+GetFileInformationByHandle
+BY_HANDLE_FILE_INFORMATION

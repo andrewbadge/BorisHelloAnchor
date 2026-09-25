@@ -1,0 +1,48 @@
+<Project>
+  <!--
+    Shared MSBuild settings for every project in the repository (SPEC §3).
+    The first group applies to everything, including the WiX installer. The second applies only to C#
+    projects, because the WiX SDK rejects .NET properties such as TargetFramework.
+  -->
+  <PropertyGroup>
+    <!-- Product metadata. Version must stay MSI-compatible: major.minor.build, each part ≤ 255.255.65535. -->
+    <Company>Boris</Company>
+    <Product>Boris HelloAnchor</Product>
+    <Copyright>Copyright © 2026 Boris HelloAnchor contributors</Copyright>
+    <Version>1.0.0</Version>
+
+    <!--
+      Licensed under the GNU General Public License v3.0 or later (see LICENSE). GPLv3 rather than v2 because
+      a bundled dependency (Serilog) is Apache-2.0, which is only compatible with GPLv3.
+    -->
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+
+    <!--
+      Runtime identifier. Kept as an overridable property so an ARM64 build can be produced later with
+      `-p:HelloAnchorRid=win-arm64` without touching the project files.
+    -->
+    <HelloAnchorRid Condition="'$(HelloAnchorRid)' == ''">win-x64</HelloAnchorRid>
+
+    <!-- Deterministic, reproducible builds. -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
+    <!-- Target framework and language settings. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <RuntimeIdentifier>$(HelloAnchorRid)</RuntimeIdentifier>
+
+    <!-- Emit XML docs so malformed doc comments (bad cref, bad XML) fail the build. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!--
+      CS1591 (missing XML comment on a public member) is suppressed because CsWin32-generated code has
+      no comments. Hand-written code is still expected to document every type and member.
+    -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+</Project>

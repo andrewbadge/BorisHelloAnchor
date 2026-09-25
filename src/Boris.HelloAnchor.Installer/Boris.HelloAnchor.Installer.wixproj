@@ -1,0 +1,27 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+  <!--
+    MSI for Boris HelloAnchor (SPEC §8). Consumes the shared publish folder produced by build.ps1:
+      artifacts/publish/win-x64/   (Service + Agent, self-contained, not single-file, not trimmed)
+    and writes artifacts/Boris.HelloAnchor-{Version}-x64.msi.
+
+    Opening this project in Visual Studio requires the HeatWave extension from FireGiant.
+  -->
+  <PropertyGroup>
+    <OutputType>Package</OutputType>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <OutputName>Boris.HelloAnchor-$(Version)-x64</OutputName>
+
+    <!-- Inputs and outputs, relative to the repository root. -->
+    <RepoRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\'))</RepoRoot>
+    <PublishDir Condition="'$(PublishDir)' == ''">$(RepoRoot)artifacts\publish\win-x64\</PublishDir>
+    <OutputPath>$(RepoRoot)artifacts\</OutputPath>
+    <IntermediateOutputPath>$(RepoRoot)artifacts\obj\installer\</IntermediateOutputPath>
+
+    <!-- Values passed to Package.wxs as preprocessor variables. -->
+    <DefineConstants>PublishDir=$(PublishDir);ProductVersion=$(Version);RepoRoot=$(RepoRoot)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.Util.wixext" />
+  </ItemGroup>
+</Project>
