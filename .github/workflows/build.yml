@@ -1,0 +1,160 @@
+name: Build
+
+# Continuous integration: builds, tests and packages on every push to main and every PR into main, and
+# uploads the MSI as a build artifact. On pull requests it also reminds you to bump <Version>.
+#
+# This workflow never publishes a release. That is the Release workflow, which is run manually.
+# Tags are deliberately NOT a trigger here: the Release workflow creates the tag itself and builds
+# its own MSI, so reacting to tags would just duplicate a Windows build.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to stamp on the MSI (e.g. 1.2.3). Leave empty to use Directory.Build.props. Does not create a release.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# Supersede an in-flight run when a PR is pushed to again: three quick pushes then cost one build
+# rather than three. Runs on main are not cancelled, so every merged commit keeps a green tick.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Reminder, not a gate: warns when a PR changes what ships but leaves <Version> alone, and explains
+  # how to pick major / minor / patch. Docs-only or CI-only PRs are left alone.
+  version-check:
+    if: github.event_name == 'pull_request'
+    # Ubuntu: this is only git and text processing, and the Linux runner starts faster.
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # Needed to compare against the base branch.
+
+      - name: Check that the version was bumped
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          # <Version> lives only in Directory.Build.props; read it from both sides of the PR.
+          read_version() { grep -oP '(?<=<Version>)[^<]+' | head -n 1; }
+          base_version=$(git show "origin/${BASE_REF}:Directory.Build.props" | read_version)
+          head_version=$(read_version < Directory.Build.props)
+          echo "Base (${BASE_REF}): ${base_version}"
+          echo "This PR:          ${head_version}"
+
+          # Anything that ends up in the MSI or changes how it is built counts as "shipped".
+          shipped=$(git diff --name-only "origin/${BASE_REF}...HEAD" -- \
+            src/ Directory.Build.props Directory.Packages.props global.json build.ps1 LICENSE THIRD-PARTY-NOTICES.md \
+            | wc -l | tr -d ' ')
+
+          guidance='Raise <Version> in Directory.Build.props (major.minor.build):
+            MAJOR - breaking: a config setting renamed/removed or its meaning changed, install location,
+                    service name or data folder changed, supported Windows versions dropped, or anything
+                    an admin must act on after upgrading.
+            MINOR - new backward-compatible capability: a new setting or TargetDisplay mode, a new
+                    platform (e.g. ARM64), noticeably new behaviour that is on by default.
+            PATCH - fixes and internal changes only: bug fixes, security hardening with no config
+                    change, dependency bumps, performance, logging.
+          Docs-, test- and CI-only changes need no bump.'
+
+          {
+            echo "### Version check"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| ${BASE_REF} | \`${base_version}\` |"
+            echo "| This PR | \`${head_version}\` |"
+            echo "| Shipped files changed | ${shipped} |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$shipped" -eq 0 ]; then
+            echo "No shipped files changed; no version bump needed." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # sort -V orders versions numerically; the PR version must be strictly higher.
+          highest=$(printf '%s\n%s\n' "$base_version" "$head_version" | sort -V | tail -n 1)
+          if [ "$head_version" = "$base_version" ]; then
+            echo "::warning file=Directory.Build.props,title=Version not bumped::This PR changes ${shipped} shipped file(s) but <Version> is still ${base_version}. Installed copies will not upgrade to a build with the same version."
+            printf '%s\n' "**Version not bumped.** ${guidance}" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$highest" != "$head_version" ]; then
+            echo "::warning file=Directory.Build.props,title=Version went backwards::<Version> ${head_version} is lower than ${base_version} on ${BASE_REF}. MajorUpgrade will refuse to install it over the newer version."
+            printf '%s\n' "**Version is lower than ${BASE_REF}.** ${guidance}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Version raised ${base_version} -> ${head_version}." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+  build:
+    # Windows is not a preference here: the projects target net10.0-windows and WiX only runs on Windows.
+    runs-on: windows-latest
+
+    # Read-only: this workflow only builds and uploads an artifact. Creating tags and releases is
+    # the Release workflow's job, and it asks for contents: write there instead.
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # No WiX install step: the installer uses the WixToolset.Sdk MSBuild SDK (v5, pinned in the
+      # .wixproj), which NuGet restores. v5 is deliberate: v6+ require accepting the Open Source
+      # Maintenance Fee EULA.
+
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          # A manual run may stamp a test version; otherwise use the single source of truth.
+          $version = '${{ github.event.inputs.version }}'
+          if (-not $version) {
+            $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version |
+              Where-Object { $_ } | Select-Object -First 1
+            $version = "$version".Trim()
+          }
+
+          # MSI ProductVersion must be numeric major.minor.build, so reject anything else early
+          # rather than failing deep inside the WiX build with a less obvious message.
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            Write-Error "Version '$version' is not major.minor.build (e.g. 1.2.3). MSI ProductVersion cannot contain a suffix."
+            exit 1
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Building version $version"
+
+      # build.ps1 is the same script developers run: restore, build (warnings as errors), unit tests,
+      # self-contained publish of Service + Agent, then the MSI. No signing in CI.
+      - name: Build, test and package
+        shell: pwsh
+        run: ./build.ps1 -Version ${{ steps.version.outputs.version }}
+
+      - name: Verify the MSI looks right
+        shell: pwsh
+        run: ./tools/Test-Msi.ps1 -Path artifacts/Boris.HelloAnchor-${{ steps.version.outputs.version }}-x64.msi -ExpectedVersion ${{ steps.version.outputs.version }}
+
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: BorisHelloAnchor-${{ steps.version.outputs.version }}-msi
+          path: artifacts/Boris.HelloAnchor-${{ steps.version.outputs.version }}-x64.msi
+          if-no-files-found: error

@@ -1,0 +1,126 @@
+name: Cleanup old artifacts
+
+# Each Build run uploads a ~31 MB MSI (self-contained .NET runtime), so artifacts dominate this
+# repo's storage quota within days. This prunes them on a schedule.
+#
+# Runs daily rather than weekly purely because of that size: a week of accumulated builds is
+# hundreds of megabytes, and the job itself is a handful of API calls.
+#
+# Deliberately safe by construction:
+#   * Only ever touches workflow *artifacts*. Release assets are a different API and are never
+#     considered here, so a published release can never be damaged by this job.
+#   * Always keeps the newest few artifacts regardless of age, so there is something downloadable
+#     even right after a quiet period.
+#   * Already-expired artifacts are skipped; GitHub has collected them and deleting returns 410.
+on:
+  schedule:
+    # 17:00 UTC daily — early morning in Australia/Sydney, so it never overlaps a working day's
+    # pushes. Nothing depends on the exact hour.
+    - cron: '0 17 * * *'
+  workflow_dispatch:
+    inputs:
+      keep_days:
+        description: 'Delete artifacts older than this many days'
+        required: false
+        default: '7'
+      keep_latest:
+        description: 'Always keep this many most recent artifacts, whatever their age'
+        required: false
+        default: '3'
+      dry_run:
+        description: 'List what would be deleted without deleting it'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    # Ubuntu, not Windows: this is only REST calls, and the Linux runner starts faster.
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: write # Required to delete artifacts.
+
+    steps:
+      - name: Prune artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP_DAYS: ${{ github.event.inputs.keep_days || '7' }}
+          KEEP_LATEST: ${{ github.event.inputs.keep_latest || '3' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+
+          echo "Retention: delete artifacts older than ${KEEP_DAYS} days,"
+          echo "           but always keep the ${KEEP_LATEST} most recent."
+          # An `if` rather than `[ ... ] && echo`: under `set -e` the latter exits the whole script
+          # when the test is false, which would silently skip the cleanup on every real run.
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "DRY RUN - nothing will actually be deleted."
+          fi
+
+          # id, created_at, size, name - newest first. Expired ones are already gone from storage.
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/artifacts" \
+            --jq '.artifacts[] | select(.expired == false) | [.id, .created_at, .size_in_bytes, .name] | @tsv' \
+            | sort -k2 -r > all.tsv || true
+
+          total=$(wc -l < all.tsv | tr -d ' ')
+          echo "Found ${total} live artifact(s)."
+
+          if [ "$total" -eq 0 ]; then
+            echo "Nothing to do." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Protect the newest KEEP_LATEST, then age-test whatever remains.
+          tail -n +$((KEEP_LATEST + 1)) all.tsv > candidates.tsv || true
+          cutoff=$(date -u -d "${KEEP_DAYS} days ago" +%s)
+
+          deleted=0
+          freed=0
+          kept=0
+
+          while IFS=$'\t' read -r id created size name; do
+            [ -z "${id:-}" ] && continue
+            created_epoch=$(date -u -d "$created" +%s)
+
+            if [ "$created_epoch" -ge "$cutoff" ]; then
+              kept=$((kept + 1))
+              continue
+            fi
+
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "would delete: ${name} (${created}, ${size} bytes)"
+            else
+              # Tolerate a 404/410 from an artifact that expired between listing and deleting.
+              if gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}" --silent 2>/dev/null; then
+                echo "deleted: ${name} (${created}, ${size} bytes)"
+              else
+                echo "skipped (already gone): ${name}"
+                continue
+              fi
+            fi
+
+            deleted=$((deleted + 1))
+            freed=$((freed + size))
+          done < candidates.tsv
+
+          protected=$(head -n "$KEEP_LATEST" all.tsv | wc -l | tr -d ' ')
+          freed_mb=$((freed / 1024 / 1024))
+          if [ "$DRY_RUN" = "true" ]; then verb="Would delete"; else verb="Deleted"; fi
+
+          {
+            echo "### Artifact cleanup"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Live artifacts found | ${total} |"
+            echo "| ${verb} | ${deleted} (${freed_mb} MB) |"
+            echo "| Kept, newer than ${KEEP_DAYS} days | ${kept} |"
+            echo "| Kept, most recent | ${protected} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "${verb} ${deleted} artifact(s), freeing ${freed_mb} MB."
