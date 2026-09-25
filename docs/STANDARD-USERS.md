@@ -1,5 +1,11 @@
 # Known issue: no agent for standard user accounts
 
+## Who this affects
+
+Only machines where Windows Hello users sign in with **standard (non-administrator) accounts**. If the
+account is a local administrator, HelloAnchor uses that account's own elevated token and works with the
+default settings; nothing in this document applies.
+
 ## Problem
 
 On a machine where the signed-in user is a **standard (non-administrator) account**, HelloAnchor installs
@@ -39,7 +45,8 @@ The existing **`AllowSystemTokenFallback`** setting is the solution for standard
 security trade-off is described in the README under
 [Standard users](../README.md#standard-users-allowsystemtokenfallback).
 
-The installer does not currently set it: it always installs the setting as `false`.
+An administrator can set it at install time with the MSI property `ALLOWSYSTEMTOKENFALLBACK=1`
+(default `0`); the value is kept across upgrades. See the README for details.
 
 ## Alternatives
 
