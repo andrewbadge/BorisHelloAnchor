@@ -297,13 +297,10 @@ To release: merge a PR that raises `<Version>`, then run **Actions â†’ Release â
 
 ## Contributing
 
-Issues and pull requests are welcome. Please:
-
-- keep changes consistent with [`docs/SPEC.md`](docs/SPEC.md), or update the spec in the same PR;
-- comment new code the way existing code is commented (XML docs on every type and member, and
-  *why* comments for anything non-obvious);
-- start every new source file with the GPL header (`.editorconfig` has the template);
-- run `.\build.ps1` before submitting. Warnings are treated as errors.
+Issues and pull requests are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to report bugs,
+the coding conventions and the PR checklist. Everyone taking part is expected to follow the
+[Code of Conduct](CODE_OF_CONDUCT.md). Report security problems privately as described in
+[`SECURITY.md`](SECURITY.md).
 
 By contributing you agree that your contribution is licensed under the project's licence (GPL-3.0-or-later).
 

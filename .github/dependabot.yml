@@ -1,0 +1,38 @@
+# Dependabot version updates: weekly PRs for NuGet packages and the GitHub Actions used by the workflows.
+# Security updates are separate and are enabled in the repository settings (Code security).
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    # Central Package Management: every version lives in Directory.Packages.props at the root.
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    groups:
+      # These ship together in the same publish folder and track the .NET 10 runtime; bump them as one.
+      microsoft-extensions:
+        patterns: ['Microsoft.Extensions.*']
+      serilog:
+        patterns: ['Serilog*']
+      test:
+        patterns: ['Microsoft.NET.Test.Sdk', 'xunit*']
+    ignore:
+      # WiX is held on v5 deliberately (v6+ adds the Open Source Maintenance Fee EULA), and the
+      # WixToolset.Sdk version in the .wixproj Sdk attribute must match, which Dependabot can't update.
+      - dependency-name: 'WixToolset.*'
+      # Stay on the extensions matching the targeted runtime (net10.0); a new major means a new .NET.
+      - dependency-name: 'Microsoft.Extensions.*'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ['*']
