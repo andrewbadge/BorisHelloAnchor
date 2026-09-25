@@ -1,0 +1,68 @@
+name: Bug report
+description: The prompt isn't moved, lands on the wrong screen, or something else is broken.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Security problems must not be reported here** — see
+        [SECURITY.md](https://github.com/andrewbadge/BorisHelloAnchor/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Dock the laptop, external monitor as main display
+        2. Register a passkey at https://webauthn.io
+        3. ...
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: HelloAnchor version
+      placeholder: e.g. 1.1.1
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version and build
+      description: Run `winver`.
+      placeholder: e.g. Windows 11 24H2 (26100.4061)
+    validations:
+      required: true
+
+  - type: textarea
+    id: displays
+    attributes:
+      label: Display setup
+      description: Laptop model, external monitors, which is primary, lid open or closed, scaling.
+
+  - type: dropdown
+    id: account
+    attributes:
+      label: Account type
+      options:
+        - Local administrator
+        - Standard user (AllowSystemTokenFallback on)
+        - Standard user (AllowSystemTokenFallback off)
+        - Not sure
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant lines from `%ProgramData%\Boris\HelloAnchor\logs`. Remove anything you consider private.
+      render: text
