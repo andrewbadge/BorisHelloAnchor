@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Boris.HelloAnchor.Core\Boris.HelloAnchor.Core.csproj" />
+    <ProjectReference Include="..\Boris.HelloAnchor.Displays\Boris.HelloAnchor.Displays.csproj" />
   </ItemGroup>
 
   <ItemGroup>

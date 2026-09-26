@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Settings app (SPEC §7.7). A small elevated window where an administrator picks which display the prompt
+    goes to. Never started automatically: the service and agent work without it, and it only edits config.json.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>Boris.HelloAnchor.Settings</RootNamespace>
+    <AssemblyName>Boris.HelloAnchor.Settings</AssemblyName>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- requireAdministrator: config.json is writable only by administrators. -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\Boris.HelloAnchor.Installer\HelloAnchor.ico</ApplicationIcon>
+    <!-- Per-Monitor V2 so monitor coordinates are physical pixels, like the agent's (set here, not in the manifest, for WinForms). -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationVisualStyles>true</ApplicationVisualStyles>
+    <!-- Published into the same folder as the Service and Agent (SPEC §8.1). -->
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Boris.HelloAnchor.Core\Boris.HelloAnchor.Core.csproj" />
+    <ProjectReference Include="..\Boris.HelloAnchor.Displays\Boris.HelloAnchor.Displays.csproj" />
+  </ItemGroup>
+</Project>

@@ -35,9 +35,12 @@ Therefore the design is: a **LocalSystem service** that launches an **elevated a
 │ Boris.HelloAnchor.Agent  (high integrity, no UI, WinExe)        │
 │  - SetWinEventHook(EVENT_OBJECT_SHOW, EVENT_OBJECT_UNCLOAKED)   │
 │  - Filters for CredentialUIBroker / Credential Dialog Xaml Host │
-│  - Resolves the internal display, centres the prompt on it      │
+│  - Resolves the target display, centres the prompt on it        │
 │  - Verifies the move stuck; retries per config                  │
 └─────────────────────────────────────────────────────────────────┘
+
+  Boris.HelloAnchor.Settings (optional, started by an administrator,
+  requireAdministrator) edits the display settings in config.json (§7.7).
 ```
 
 ---
@@ -50,6 +53,8 @@ Boris.HelloAnchor.sln
 │  ├─ Boris.HelloAnchor.Core/        class library (net10.0-windows)
 │  ├─ Boris.HelloAnchor.Service/     worker service (net10.0-windows)
 │  ├─ Boris.HelloAnchor.Agent/       WinExe (net10.0-windows)
+│  ├─ Boris.HelloAnchor.Displays/    class library: display enumeration (Agent + Settings)
+│  ├─ Boris.HelloAnchor.Settings/    WinForms WinExe, requireAdministrator (net10.0-windows)
 │  └─ Boris.HelloAnchor.Installer/   WiX SDK-style project (.wixproj)
 ├─ tests/
 │  └─ Boris.HelloAnchor.Tests/       xUnit test project
@@ -86,6 +91,7 @@ Configuration lives in a single JSON file shared by the service and agent:
   "HelloAnchor": {
     "TargetDisplay": "Internal",
     "TargetDeviceName": null,
+    "TargetMonitorId": null,
     "TargetProcessNames": [ "CredentialUIBroker" ],
     "TargetWindowClasses": [ "Credential Dialog Xaml Host" ],
     "VerifyDelaysMs": [ 150, 300, 600, 1000, 2000 ],
@@ -99,8 +105,9 @@ Configuration lives in a single JSON file shared by the service and agent:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `TargetDisplay` | `"Internal"` \| `"Primary"` \| `"DeviceName"` | Which display to move the prompt to. `Internal` = the built-in laptop panel. |
-| `TargetDeviceName` | string or null | GDI device name (e.g. `\\.\DISPLAY1`). Used only when `TargetDisplay` is `DeviceName`. |
+| `TargetDisplay` | `"Internal"` \| `"Primary"` \| `"DeviceName"` \| `"Monitor"` | Which display to move the prompt to. `Internal` = the built-in laptop panel. Any other mode falls back to `Internal` when its display isn't attached (§7.4). |
+| `TargetDeviceName` | string or null | GDI device name (e.g. `\\.\DISPLAY1`). Used only when `TargetDisplay` is `DeviceName`. Not stable across docking; kept for compatibility. |
+| `TargetMonitorId` | string or null | Stable monitor ID (§7.4), e.g. `DEL41B8-5KC0Q83` or model-only `DEL41B8`. Used only when `TargetDisplay` is `Monitor`. |
 | `TargetProcessNames` | string[] | Process names (no `.exe`) whose windows are candidates. |
 | `TargetWindowClasses` | string[] | Window class names that must also match. A window must match **both** lists. |
 | `VerifyDelaysMs` | int[] | After a move, re-check position at each delay; re-apply the move if it snapped back or was resized. |
@@ -112,7 +119,7 @@ Configuration lives in a single JSON file shared by the service and agent:
 Put the options class and a loader in **Core**. Missing file or invalid values → use the defaults above and log a warning; never crash.
 
 - Deserialize with **`System.Text.Json`** directly, not `Microsoft.Extensions.Configuration` binding (the binder appends bound arrays to default arrays instead of replacing them).
-- Validation is **per field**: an invalid value resets only that field to its default. Invalid means: unknown enum or log-level name, empty process/class lists, empty/negative or > 10 000 ms delays, backoff values < 1 or > 3600 s, and `DeviceName` mode with a null/empty `TargetDeviceName` (falls back to `Internal`).
+- Validation is **per field**: an invalid value resets only that field to its default. Invalid means: unknown enum or log-level name, empty process/class lists, empty/negative or > 10 000 ms delays, backoff values < 1 or > 3600 s, `DeviceName` mode with a null/empty `TargetDeviceName`, a `TargetMonitorId` that isn't `MMMPPPP` or `MMMPPPP-SERIAL`, and `Monitor` mode without a valid `TargetMonitorId` (both modes then fall back to `Internal`).
 - The loaded options object is immutable. Reloads publish a new instance (volatile reference swap); consumers always read the current instance.
 - Both the **agent and the service** re-read the file when it changes (a `FileSystemWatcher` on the folder, filtered to `config.json`, with a 500 ms debounce), so edits apply without restarting. The log level is applied through a Serilog `LoggingLevelSwitch`.
 
@@ -240,18 +247,26 @@ Check cheap conditions first (object IDs, then top-level, then class name) becau
 
 ### 7.4 Resolving the target display
 
-Resolve on **every** matching event (it's cheap and handles docking, undocking, and lid changes without extra plumbing):
+Resolve on **every** matching event (it's cheap and handles docking, undocking, and lid changes without extra plumbing). The enumeration lives in **Boris.HelloAnchor.Displays** (`DisplayTopology`), shared with the Settings app; the choice is pure logic in Core (`TargetDisplaySelector`) so it is unit-tested.
 
-- **`Internal`:**
-  1. `GetDisplayConfigBufferSizes` + `QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS)`. If it returns `ERROR_INSUFFICIENT_BUFFER` (the topology changed between the two calls), re-query sizes and retry, up to 3 times.
-  2. Pick the path whose `targetInfo.outputTechnology` is one of `DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL` (0x80000000), `DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED` (11), `DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED` (13), or `DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS` (6). Many laptops report their eDP panel as `DISPLAYPORT_EMBEDDED` rather than `INTERNAL`, and older laptops use `LVDS`; all four must be accepted. If several paths match (dual-screen laptops), use the **first** in the order `QueryDisplayConfig` returns; users who need another panel use `TargetDisplay: "DeviceName"`.
-  3. `DisplayConfigGetDeviceInfo` with `DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME` on that path's `sourceInfo` → `viewGdiDeviceName` (e.g. `\\.\DISPLAY1`).
+**Enumerate** the attached monitors:
+
+1. `GetDisplayConfigBufferSizes` + `QueryDisplayConfig(QDC_ONLY_ACTIVE_PATHS)`. If it returns `ERROR_INSUFFICIENT_BUFFER` (the topology changed between the two calls), re-query sizes and retry, up to 3 times.
+2. For each path, `DisplayConfigGetDeviceInfo`:
+   - `DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME` on `sourceInfo` → `viewGdiDeviceName` (e.g. `\\.\DISPLAY1`);
+   - `DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME` on `targetInfo` → `monitorFriendlyDeviceName` and `monitorDevicePath`.
+3. The path is **internal** if `targetInfo.outputTechnology` is one of `DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL` (0x80000000), `DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED` (11), `DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED` (13), or `DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS` (6). Many laptops report their eDP panel as `DISPLAYPORT_EMBEDDED` rather than `INTERNAL`, and older laptops use `LVDS`; all four must be accepted.
+4. **Monitor ID.** The device path `\\?\DISPLAY#DEL41B8#5&2a8c1b0&0&UID4352#{guid}` names the device instance `DISPLAY\DEL41B8\5&2a8c1b0&0&UID4352`. Read its EDID from `HKLM\SYSTEM\CurrentControlSet\Enum\<instance>\Device Parameters\EDID` and build the ID as `MMMPPPP` (PNP manufacturer + product code in hex, the same as the Windows hardware ID) plus `-SERIAL` when the monitor reports one: the serial-number descriptor (tag `0xFF`) if present, else the numeric serial (bytes 12–15, `X8`) if non-zero. Characters that aren't printable ASCII, spaces, quotes and backslashes are dropped from the serial. If the EDID can't be read, use the model from the device path alone. Unlike GDI names, this ID follows the physical monitor across ports, docks and reboots.
+5. `EnumDisplayMonitors` + `GetMonitorInfo` (`MONITORINFOEXW`) give each GDI source's `rcMonitor`, **`rcWork`** (work area, excludes the taskbar) and `MONITORINFOF_PRIMARY`. Monitors the CCD query didn't describe are still listed, without an ID and not internal.
+
+**Choose**, keeping `QueryDisplayConfig` path order:
+
+- **`Internal`:** the first internal monitor. With several (dual-screen laptops), the first wins; pick another with `Monitor`.
 - **`Primary`:** the monitor with `MONITORINFOF_PRIMARY`.
-- **`DeviceName`:** `TargetDeviceName` from config.
+- **`Monitor`:** the first monitor whose ID equals `TargetMonitorId` (case-insensitive); failing that, the first of the same model where either side has no serial. A model-only ID therefore matches any monitor of that model, and a different serial never matches.
+- **`DeviceName`:** the monitor whose GDI name equals `TargetDeviceName`.
 
-Then `EnumDisplayMonitors` + `GetMonitorInfo` (`MONITORINFOEXW`) to find the monitor whose `szDevice` matches, and use its **`rcWork`** (work area, excludes the taskbar).
-
-If no matching display exists (lid closed, internal panel disabled), log at Debug and do nothing.
+**Fallback.** If `Primary`, `Monitor` or `DeviceName` finds nothing (e.g. undocked), use the `Internal` choice instead and log it at Debug. If there is still nothing (lid closed, internal panel disabled), log at Debug and do nothing.
 
 ### 7.5 Moving and verifying
 
@@ -266,9 +281,21 @@ If no matching display exists (lid closed, internal panel disabled), log at Debu
 
 ### 7.6 Agent NativeMethods.txt (starting point)
 
-`SetWinEventHook`, `UnhookWinEvent`, `MsgWaitForMultipleObjectsEx`, `PeekMessage`, `TranslateMessage`, `DispatchMessage`, `GetClassName`, `GetWindowThreadProcessId`, `OpenProcess`, `QueryFullProcessImageName`, `GetProcessTimes`, `ProcessIdToSessionId`, `GetAncestor`, `IsWindow`, `GetWindowRect`, `SetWindowPos`, `EnumDisplayMonitors`, `GetMonitorInfo`, `MONITORINFOEXW`, `GetDisplayConfigBufferSizes`, `QueryDisplayConfig`, `DisplayConfigGetDeviceInfo`, `DISPLAYCONFIG_SOURCE_DEVICE_NAME`, `EVENT_OBJECT_SHOW`, `EVENT_OBJECT_UNCLOAKED`, `WINEVENT_OUTOFCONTEXT`, `WINEVENT_SKIPOWNPROCESS`.
+`SetWinEventHook`, `UnhookWinEvent`, `MsgWaitForMultipleObjectsEx`, `PeekMessage`, `TranslateMessage`, `DispatchMessage`, `GetClassName`, `GetWindowThreadProcessId`, `OpenProcess`, `QueryFullProcessImageName`, `GetProcessTimes`, `ProcessIdToSessionId`, `GetAncestor`, `IsWindow`, `GetWindowRect`, `SetWindowPos`, `EVENT_OBJECT_SHOW`, `EVENT_OBJECT_UNCLOAKED`, `WINEVENT_OUTOFCONTEXT`, `WINEVENT_SKIPOWNPROCESS`.
 
 (Named event and mutex access may use the .NET `EventWaitHandle` / `Mutex` types.)
+
+The display APIs (`EnumDisplayMonitors`, `GetMonitorInfo`, `MONITORINFOEXW`, `GetDisplayConfigBufferSizes`, `QueryDisplayConfig`, `DisplayConfigGetDeviceInfo`, `DISPLAYCONFIG_SOURCE_DEVICE_NAME`, `DISPLAYCONFIG_TARGET_DEVICE_NAME`) are in **Boris.HelloAnchor.Displays**' own `NativeMethods.txt`.
+
+### 7.7 Boris.HelloAnchor.Settings
+
+An optional WinForms app that lets an administrator choose the target display without editing JSON, because monitor IDs differ on every desk and can't be scripted in advance.
+
+- `app.manifest` requests **`requireAdministrator`**: `config.json` is writable only by administrators (§8.2). Per-Monitor V2 DPI awareness via `ApplicationHighDpiMode`, so monitor coordinates match the agent's.
+- Never started automatically. The service and agent don't depend on it and don't talk to it: it only edits `config.json`, and the agent's config watcher (§4) applies the change.
+- Offers `Internal` (default), `Primary` and `Monitor` (a list of attached monitors from `DisplayTopology`, showing name, connection, resolution and monitor ID). `DeviceName` is shown only if the file already uses it. A configured monitor that isn't attached is still listed as "(not connected)" so saving doesn't lose it.
+- **Identify monitors** shows a borderless, non-activating label with the name and ID in the middle of each monitor for 4 seconds.
+- Saving (`ConfigWriter`) changes only `TargetDisplay` and `TargetMonitorId`, keeping every other setting and key order. Comments can't be preserved, so the app warns first if the file has any. The result is re-parsed with `ConfigLoader` before writing, and written in place so the file keeps its owner and ACL. If the data folder doesn't exist, it refuses rather than creating one with `%ProgramData%`'s permissive ACL.
 
 ---
 
@@ -278,7 +305,7 @@ Use the **WiX Toolset v5** SDK-style project (`<Project Sdk="WixToolset.Sdk/5.x.
 
 ### 8.1 Publishing inputs
 
-- Publish **Service** and **Agent** as **self-contained**, `win-x64`, **not** single-file and **not** trimmed, **into the same output folder** (`artifacts/publish/win-x64/`) so the .NET runtime files are shared rather than duplicated. Central Package Management (§3) keeps shared dependencies identical.
+- Publish **Service**, **Agent** and **Settings** as **self-contained**, `win-x64`, **not** single-file and **not** trimmed, **into the same output folder** (`artifacts/publish/win-x64/`) so the .NET runtime files are shared rather than duplicated. Central Package Management (§3) keeps shared dependencies identical.
 - Harvest that folder with the WiX `<Files Include="...\**" />` element instead of listing files by hand.
 
 ### 8.2 Package requirements
@@ -294,11 +321,12 @@ Use the **WiX Toolset v5** SDK-style project (`<Project Sdk="WixToolset.Sdk/5.x.
 - **Default `config.json`**: install as `NeverOverwrite="yes"` and `Permanent="yes"` so user edits survive upgrades and uninstall.
 - **Public property `ALLOWSYSTEMTOKENFALLBACK`** (`0`/`1`, default `0`; anything else fails a launch condition) writes the existing `AllowSystemTokenFallback` setting into `config.json` via a deferred, non-impersonated `WixQuietExec` step running the bundled `Set-ConfigFallback.ps1` after `InstallFiles`. That script changes only that one value. The chosen value is remembered in `HKLM\SOFTWARE\Boris\HelloAnchor\AllowSystemTokenFallback` and reused on upgrade/repair unless a new value is passed on the command line. No service code is involved.
 - Register the Event Log source `Boris.HelloAnchor` in the Application log with `util:EventSource`, `EventMessageFile="[WindowsFolder]Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll"`.
+- Start menu shortcut **Boris HelloAnchor Settings** (all users, `ProgramMenuFolder`) to `Boris.HelloAnchor.Settings.exe`. It is its own component with an HKCU marker value as key path, which ICE43/ICE57 require for a non-advertised shortcut.
 - Add/Remove Programs: product icon, publisher `Boris`, help link placeholder.
 
 ### 8.3 Signing (optional, supported)
 
-Make `build.ps1` accept an optional certificate thumbprint or PFX. If one is provided, sign `Boris.HelloAnchor.Service.exe`, `Boris.HelloAnchor.Agent.exe`, and the MSI with `signtool` and a timestamp server. If not, skip signing without failing.
+Make `build.ps1` accept an optional certificate thumbprint or PFX. If one is provided, sign `Boris.HelloAnchor.Service.exe`, `Boris.HelloAnchor.Agent.exe`, `Boris.HelloAnchor.Settings.exe` and the MSI with `signtool` and a timestamp server. If not, skip signing without failing.
 
 ---
 
@@ -325,6 +353,7 @@ Automated (unit tests in a `tests/Boris.HelloAnchor.Tests` xUnit project):
 - Backoff sequence logic (including reset after 5 minutes of uptime).
 - Exit-code → restart decision.
 - Internal-display output-technology classification.
+- Monitor IDs: EDID parsing, device-path parsing, ID validation and matching; target selection and the built-in fallback; the Settings app's config writer.
 
 Manual (document the results in `docs/TESTING.md`):
 
@@ -343,13 +372,16 @@ Manual (document the results in `docs/TESTING.md`):
 13. Kill the service process (`taskkill /f`). All agents exit with it; after the SCM restarts the service, exactly one agent per session is running.
 14. As a standard user, pre-create `%ProgramData%\Boris\HelloAnchor\config.json` before installing. After install, the file is owned by Administrators/SYSTEM and not writable by the user.
 15. If available, repeat test 1 with Windows *Administrator Protection* enabled and record the result.
+16. Start **Boris HelloAnchor Settings** from the Start menu. A UAC prompt appears; the window lists every attached monitor with an ID, and **Identify monitors** labels each screen.
+17. In Settings choose an external monitor and save. A passkey prompt is centred on that monitor. Move the monitor to another port or dock: it still goes there.
+18. With a monitor chosen, undock. The prompt is centred on the laptop panel (Debug log line about the fallback).
 
 ---
 
 ## 11. Non-goals and constraints
 
 - Do **not** attempt to handle UAC prompts on the secure desktop or the lock/sign-in screen. These aren't reachable and aren't in scope.
-- No UI, tray icon, or IPC listener in v1. Keep the elevated agent's attack surface minimal.
+- No UI in the service or agent, no tray icon, and no IPC listener. Keep the elevated agent's attack surface minimal. The only UI is the separate, optional Settings app (§7.7), which an administrator starts by hand and which communicates only through `config.json`.
 - No `uiAccess="true"`. Testing showed elevation alone is sufficient.
 - No telemetry or network access of any kind.
 

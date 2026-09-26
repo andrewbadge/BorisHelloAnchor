@@ -6,6 +6,7 @@
 // version 3 of the License, or (at your option) any later version. See the LICENSE file for details.
 
 using System.Text.Json;
+using Boris.HelloAnchor.Core.Displays;
 using Microsoft.Extensions.Logging;
 
 namespace Boris.HelloAnchor.Core.Configuration;
@@ -149,6 +150,23 @@ public static class ConfigLoader
 
                         break;
 
+                    case "TARGETMONITORID":
+                        if (value.ValueKind == JsonValueKind.Null)
+                        {
+                            options = options with { TargetMonitorId = null };
+                        }
+                        else if (value.ValueKind == JsonValueKind.String &&
+                                 MonitorIdentity.TryNormalise(value.GetString(), out var monitorId))
+                        {
+                            options = options with { TargetMonitorId = monitorId };
+                        }
+                        else
+                        {
+                            warnings.Add($"'{property.Name}' must be null or a monitor ID such as \"DEL41B8\" or \"DEL41B8-5KC0Q83\"; using default.");
+                        }
+
+                        break;
+
                     case "TARGETPROCESSNAMES":
                         // Accept "Foo.exe" as well as "Foo" — the spec says no extension, but being lenient is harmless.
                         options = ReadStringList(value, property.Name, warnings, StripExe) is { } processes
@@ -202,6 +220,13 @@ public static class ConfigLoader
             if (options.TargetDisplay == TargetDisplayMode.DeviceName && string.IsNullOrWhiteSpace(options.TargetDeviceName))
             {
                 warnings.Add("'TargetDisplay' is 'DeviceName' but 'TargetDeviceName' is empty; using 'Internal'.");
+                options = options with { TargetDisplay = TargetDisplayMode.Internal };
+            }
+
+            // Likewise Monitor mode without a monitor ID.
+            if (options.TargetDisplay == TargetDisplayMode.Monitor && options.TargetMonitorId is null)
+            {
+                warnings.Add("'TargetDisplay' is 'Monitor' but 'TargetMonitorId' is empty or invalid; using 'Internal'.");
                 options = options with { TargetDisplay = TargetDisplayMode.Internal };
             }
 

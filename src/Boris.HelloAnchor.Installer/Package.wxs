@@ -36,6 +36,9 @@
       </Directory>
     </StandardDirectory>
 
+    <!-- All-users Start menu, for the Settings shortcut. -->
+    <StandardDirectory Id="ProgramMenuFolder" />
+
     <!-- C:\ProgramData\Boris\HelloAnchor (config) and ...\logs -->
     <StandardDirectory Id="CommonAppDataFolder">
       <Directory Id="DataCompanyFolder" Name="Boris">
@@ -137,6 +140,8 @@
     <ComponentGroup Id="ProgramFiles" Directory="INSTALLFOLDER">
       <Files Include="$(var.PublishDir)**">
         <Exclude Files="$(var.PublishDir)Boris.HelloAnchor.Service.exe" />
+        <!-- The Settings app has its own component too, for its Start menu shortcut. -->
+        <Exclude Files="$(var.PublishDir)Boris.HelloAnchor.Settings.exe" />
         <!-- Debug symbols and XML API docs are not shipped. -->
         <Exclude Files="$(var.PublishDir)**\*.pdb" />
         <Exclude Files="$(var.PublishDir)**\*.xml" />
@@ -144,6 +149,33 @@
 
       <!-- The licence and third-party notices travel with the binaries (GPL §4 / §6). -->
       <!-- One file per component so WiX can generate stable component GUIDs for these unversioned files. -->
+      <!--
+        Settings app (SPEC §7.7) with an all-users Start menu shortcut. The app asks for elevation itself
+        (requireAdministrator), so the shortcut needs nothing special.
+      -->
+      <Component Id="SettingsExecutable">
+        <File Id="SettingsExe" Source="$(var.PublishDir)Boris.HelloAnchor.Settings.exe" KeyPath="yes" />
+      </Component>
+
+      <!--
+        The shortcut lives in its own component because Windows Installer (ICE43/ICE57) wants a non-advertised
+        shortcut's key path to be an HKCU registry value, not a file: ICE57 treats the Start menu as per-user
+        data even in a per-machine package. The value is only a marker for the installing user.
+      -->
+      <Component Id="SettingsShortcut" Directory="ProgramMenuFolder">
+        <Shortcut Id="SettingsShortcut"
+                  Name="Boris HelloAnchor Settings"
+                  Description="Choose which display the Windows Hello prompt is moved to."
+                  Target="[INSTALLFOLDER]Boris.HelloAnchor.Settings.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU"
+                       Key="SOFTWARE\Boris\HelloAnchor"
+                       Name="SettingsShortcut"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+
       <Component Id="LicenseFile">
         <File Id="LicenseFile" Source="$(var.RepoRoot)LICENSE" Name="LICENSE.txt" KeyPath="yes" />
       </Component>
