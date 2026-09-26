@@ -162,6 +162,7 @@ public static class HelloAnchorOptionsExtensions
     public static string Describe(this HelloAnchorOptions options) =>
         $"TargetDisplay={options.TargetDisplay}" +
         (options.TargetDisplay == TargetDisplayMode.DeviceName ? $" ({options.TargetDeviceName})" : string.Empty) +
+        (options.TargetDisplay == TargetDisplayMode.Monitor ? $" ({options.TargetMonitorId})" : string.Empty) +
         $", Processes=[{string.Join(", ", options.TargetProcessNames)}]" +
         $", Classes=[{string.Join(", ", options.TargetWindowClasses)}]" +
         $", VerifyDelaysMs=[{string.Join(", ", options.VerifyDelaysMs)}]" +

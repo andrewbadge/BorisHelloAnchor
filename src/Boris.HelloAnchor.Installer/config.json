@@ -2,6 +2,7 @@
   "HelloAnchor": {
     "TargetDisplay": "Internal",
     "TargetDeviceName": null,
+    "TargetMonitorId": null,
     "TargetProcessNames": [ "CredentialUIBroker" ],
     "TargetWindowClasses": [ "Credential Dialog Xaml Host" ],
     "VerifyDelaysMs": [ 150, 300, 600, 1000, 2000 ],

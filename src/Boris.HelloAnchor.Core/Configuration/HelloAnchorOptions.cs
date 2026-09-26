@@ -18,8 +18,17 @@ public enum TargetDisplayMode
     /// <summary>Whichever monitor Windows currently treats as primary.</summary>
     Primary,
 
-    /// <summary>The GDI device named by <see cref="HelloAnchorOptions.TargetDeviceName"/>.</summary>
+    /// <summary>
+    /// The GDI device named by <see cref="HelloAnchorOptions.TargetDeviceName"/>. Windows can renumber GDI
+    /// names on docking or re-plugging, so <see cref="Monitor"/> is preferred.
+    /// </summary>
     DeviceName,
+
+    /// <summary>
+    /// The physical monitor identified by <see cref="HelloAnchorOptions.TargetMonitorId"/>, a stable ID built
+    /// from the monitor's EDID (see <see cref="Displays.MonitorIdentity"/>).
+    /// </summary>
+    Monitor,
 }
 
 /// <summary>
@@ -37,6 +46,12 @@ public sealed record HelloAnchorOptions
 
     /// <summary>GDI device name (e.g. <c>\\.\DISPLAY1</c>); only used when <see cref="TargetDisplay"/> is <see cref="TargetDisplayMode.DeviceName"/>.</summary>
     public string? TargetDeviceName { get; init; }
+
+    /// <summary>
+    /// Stable monitor ID (e.g. <c>DEL41B8-5KC0Q83</c>); only used when <see cref="TargetDisplay"/> is
+    /// <see cref="TargetDisplayMode.Monitor"/>. Held in canonical form (see <see cref="Displays.MonitorIdentity.TryNormalise"/>).
+    /// </summary>
+    public string? TargetMonitorId { get; init; }
 
     /// <summary>Process names (without <c>.exe</c>) whose windows are candidates.</summary>
     public IReadOnlyList<string> TargetProcessNames { get; init; } = ["CredentialUIBroker"];

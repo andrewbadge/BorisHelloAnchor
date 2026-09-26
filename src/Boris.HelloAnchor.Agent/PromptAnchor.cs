@@ -59,7 +59,7 @@ internal sealed class PromptAnchor(
         var target = displays.Resolve(options);
         if (target is null)
         {
-            logger.LogDebug("Prompt {Hwnd} shown but target display ({Mode}) is not available; leaving it where Windows put it.", hwnd.Format(), options.TargetDisplay);
+            logger.LogDebug("Prompt {Hwnd} shown but neither the target display ({Mode}) nor the internal display is available; leaving it where Windows put it.", hwnd.Format(), options.TargetDisplay);
             return;
         }
 

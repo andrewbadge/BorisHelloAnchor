@@ -12,8 +12,8 @@
 .DESCRIPTION
     1. Restores and builds the solution in Release (warnings are errors via Directory.Build.props).
     2. Runs the unit tests (unless -SkipTests).
-    3. Publishes the Service and Agent, self-contained, into artifacts\publish\win-x64\.
-    4. Optionally signs the two executables.
+    3. Publishes the Service, Agent and Settings app, self-contained, into artifacts\publish\win-x64\.
+    4. Optionally signs the three executables.
     5. Builds the WiX installer -> artifacts\Boris.HelloAnchor-{version}-x64.msi.
     6. Optionally signs the MSI.
     7. Prints the MSI path.
@@ -149,7 +149,7 @@ if (-not $SkipTests) {
     Invoke-Checked 'Unit tests' { dotnet test --project $tests -c $Configuration --no-build }
 }
 
-foreach ($project in 'Boris.HelloAnchor.Service', 'Boris.HelloAnchor.Agent') {
+foreach ($project in 'Boris.HelloAnchor.Service', 'Boris.HelloAnchor.Agent', 'Boris.HelloAnchor.Settings') {
     $path = Join-Path $repoRoot "src\$project\$project.csproj"
     Invoke-Checked "Publish $project" {
         dotnet publish $path -c $Configuration -r win-x64 --self-contained -o $publishDir -p:PublishSingleFile=false -p:PublishTrimmed=false $versionProperty
@@ -159,7 +159,8 @@ foreach ($project in 'Boris.HelloAnchor.Service', 'Boris.HelloAnchor.Agent') {
 if ($signing) {
     Invoke-Sign @(
         (Join-Path $publishDir 'Boris.HelloAnchor.Service.exe'),
-        (Join-Path $publishDir 'Boris.HelloAnchor.Agent.exe'))
+        (Join-Path $publishDir 'Boris.HelloAnchor.Agent.exe'),
+        (Join-Path $publishDir 'Boris.HelloAnchor.Settings.exe'))
 }
 else {
     Write-Host '==> No certificate supplied; skipping code signing.' -ForegroundColor Yellow

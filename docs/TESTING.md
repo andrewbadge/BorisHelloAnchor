@@ -23,6 +23,9 @@ Automated tests run with `dotnet test --project tests/Boris.HelloAnchor.Tests` (
 | 13 | `taskkill /f` the service | All agents exit; after SCM restart, exactly one agent per session | | |
 | 14 | Standard user pre-creates `config.json` before install | After install it is owned by Administrators and not user-writable | | |
 | 15 | Windows Administrator Protection enabled (if available) | Record behaviour | | |
+| 16 | Start Settings from the Start menu | UAC prompt; all monitors listed with IDs; Identify labels each screen | | |
+| 17 | Settings: choose an external monitor, save, trigger a prompt; then re-plug it into another port or dock | Prompt centred on that monitor both times | | |
+| 18 | With a monitor chosen, undock and trigger a prompt | Prompt centred on the laptop panel; Debug fallback line | | |
 
 ## Useful commands
 

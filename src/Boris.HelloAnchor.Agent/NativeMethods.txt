@@ -26,13 +26,3 @@ GetCurrentProcessId
 // Moving
 GetWindowRect
 SetWindowPos
-// Display resolution
-EnumDisplayMonitors
-GetMonitorInfo
-MONITORINFOEXW
-MONITORINFOF_PRIMARY
-GetDisplayConfigBufferSizes
-QueryDisplayConfig
-DisplayConfigGetDeviceInfo
-DISPLAYCONFIG_SOURCE_DEVICE_NAME
-WIN32_ERROR

@@ -16,7 +16,7 @@
       - UpgradeCode is the project's fixed code (a changed code would install side by side instead of
         upgrading);
       - the package is per-machine (ALLUSERS=1), which the LocalSystem service requires;
-      - the Service and Agent executables, the licence and the third-party notices are in the payload;
+      - the Service, Agent and Settings executables, the licence and the third-party notices are in the payload;
       - the service is registered as Boris.HelloAnchor, auto-start, running as LocalSystem.
     Used by both the Build and Release workflows so the two can't drift apart.
 
@@ -82,7 +82,7 @@ if ((Get-MsiProperty 'ALLUSERS') -ne '1') { throw 'ALLUSERS is not 1; the packag
 
 # File table names are 'SHORT~1.EXE|LongName.exe'; match on the long name.
 $files = Invoke-MsiQuery 'SELECT `FileName` FROM `File`' 1
-foreach ($required in 'Boris.HelloAnchor.Service.exe', 'Boris.HelloAnchor.Agent.exe', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.md', 'config.json') {
+foreach ($required in 'Boris.HelloAnchor.Service.exe', 'Boris.HelloAnchor.Agent.exe', 'Boris.HelloAnchor.Settings.exe', 'LICENSE.txt', 'THIRD-PARTY-NOTICES.md', 'config.json') {
     if (-not ($files | Where-Object { $_ -like "*$required" })) { throw "$required is missing from the MSI." }
 }
 

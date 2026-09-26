@@ -1,15 +1,42 @@
+<div align="center">
+
 # Boris HelloAnchor
 
 **Keeps the Windows Hello / "Windows Security" prompt on your laptop's built-in screen, where the face-recognition camera is.**
 
-<a href="https://buymeacoffee.com/andrewbadge"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="60" width="217"></a>
+[![Release](https://img.shields.io/github/v/release/andrewbadge/BorisHelloAnchor?label=release)](https://github.com/andrewbadge/BorisHelloAnchor/releases/latest)
+[![Build](https://img.shields.io/github/actions/workflow/status/andrewbadge/BorisHelloAnchor/build.yml?branch=main&label=build)](https://github.com/andrewbadge/BorisHelloAnchor/actions/workflows/build.yml)
+![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)
+![Platform](https://img.shields.io/badge/platform-x64-555)
+![.NET](https://img.shields.io/badge/.NET-10-512BD4)
+[![Licence](https://img.shields.io/badge/licence-GPL--3.0--or--later-blue)](LICENSE)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/andrewbadge)
+
+[How it works](#how-it-works) ·
+[Requirements](#requirements) ·
+[Install](#install) ·
+[Choosing the display](#choosing-the-display) ·
+[Configuration](#configuration) ·
+[Logs](#logs) ·
+[Security notes](#security-notes) ·
+[Standard users](#standard-users-allowsystemtokenfallback) ·
+[Limitations](#limitations) ·
+[Building from source](#building-from-source) ·
+[Contributing](#contributing) ·
+[Support](#support-the-project) ·
+[Licence](#licence)
+
+</div>
+
+---
 
 When a laptop is docked to an external monitor, Windows often shows the Hello credential prompt (passkeys,
 credential prompts, some sign-in confirmations) on the external screen. The IR camera then can't see your
 face, so you end up typing a PIN. HelloAnchor watches for that prompt and moves it to the laptop panel
 within a fraction of a second, without taking focus.
 
-- No UI, no tray icon, no network access, no telemetry.
+- Runs in the background: no tray icon, no network access, no telemetry. An optional Settings app lets an
+  administrator send the prompt to a different monitor.
 - Works with mixed display scaling (per-monitor DPI aware).
 - Follows docking, undocking and lid changes automatically.
 
@@ -44,7 +71,7 @@ HelloAnchor therefore has two parts:
 │  • hooks "window shown" events                            │
 │  • spots CredentialUIBroker's "Credential Dialog Xaml     │
 │    Host" window                                           │
-│  • centres it on the internal display and checks it stays │
+│  • centres it on the target display and checks it stays   │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -83,6 +110,25 @@ Use **Settings → Apps → Installed apps → Boris HelloAnchor → Uninstall**
 are removed. `%ProgramData%\Boris\HelloAnchor` (your configuration and logs) is kept; delete it by hand if
 you don't need it.
 
+## Choosing the display
+
+By default the prompt goes to the laptop's built-in screen. To send it to a different monitor (for example,
+one with its own Hello camera), open **Boris HelloAnchor Settings** from the Start menu. It asks for
+administrator rights, because it changes the machine-wide configuration.
+
+![The Boris HelloAnchor Settings window, listing the built-in display and an external Dell monitor with their monitor IDs](docs/images/settings.png)
+
+1. Choose **A specific monitor** and pick it from the list. **Identify monitors** shows each monitor's name
+   on its own screen for a few seconds, so you can tell which is which.
+2. Click **Save**. The agent picks up the change within about a second.
+
+Monitors are recognised by an ID built from their EDID: the model plus the serial number, e.g.
+`DEL41B8-5KC0Q83`. The ID follows the physical monitor whichever port or dock it is plugged into, unlike
+Windows' `\\.\DISPLAYn` names, which can be renumbered. **If the chosen monitor isn't connected (for example,
+when you're undocked), the prompt goes to the built-in display instead.**
+
+The Settings app is optional. It never runs on its own, and HelloAnchor works without it.
+
 ## Configuration
 
 Settings live in `%ProgramData%\Boris\HelloAnchor\config.json`. Only administrators can edit this file.
@@ -93,6 +139,7 @@ Changes apply within about a second, with no restart needed.
   "HelloAnchor": {
     "TargetDisplay": "Internal",
     "TargetDeviceName": null,
+    "TargetMonitorId": null,
     "TargetProcessNames": [ "CredentialUIBroker" ],
     "TargetWindowClasses": [ "Credential Dialog Xaml Host" ],
     "VerifyDelaysMs": [ 150, 300, 600, 1000, 2000 ],
@@ -106,8 +153,9 @@ Changes apply within about a second, with no restart needed.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `TargetDisplay` | `Internal` | `Internal` (the built-in panel), `Primary` (Windows' main display), or `DeviceName`. |
-| `TargetDeviceName` | `null` | GDI name such as `\\.\DISPLAY1`, used when `TargetDisplay` is `DeviceName`. Useful for dual-screen laptops. |
+| `TargetDisplay` | `Internal` | `Internal` (the built-in panel), `Primary` (Windows' main display), `Monitor` (the monitor in `TargetMonitorId`) or `DeviceName`. If the chosen display isn't connected, the built-in panel is used instead. |
+| `TargetMonitorId` | `null` | Monitor ID such as `DEL41B8-5KC0Q83`, used when `TargetDisplay` is `Monitor`. The Settings app fills it in. A model-only ID such as `DEL41B8` matches any monitor of that model. |
+| `TargetDeviceName` | `null` | GDI name such as `\\.\DISPLAY1`, used when `TargetDisplay` is `DeviceName`. Windows can renumber these on docking, so prefer `Monitor`. |
 | `TargetProcessNames` | `CredentialUIBroker` | Processes whose windows are candidates (no `.exe`). |
 | `TargetWindowClasses` | `Credential Dialog Xaml Host` | Window classes that must also match. |
 | `VerifyDelaysMs` | `150, 300, 600, 1000, 2000` | After each move, re-check at these times (ms) and fix the position if it snapped back or was resized. A safety net: the agent also re-anchors the prompt the moment it becomes visible. |
@@ -145,6 +193,8 @@ HelloAnchor runs elevated code, so it is deliberately conservative:
   service never leaves agents behind.
 - **Minimal attack surface.** The agent has no windows, no IPC endpoint and no network access. Standard
   users can wait on the shutdown signal but cannot trigger it.
+- **Settings app is separate.** It runs only when an administrator starts it (it asks for elevation), and
+  it talks to nothing but `config.json`. The agent gained no UI or IPC for it.
 
 ### Standard users (`AllowSystemTokenFallback`)
 
@@ -238,6 +288,8 @@ Open **`Boris.HelloAnchor.sln`**. It contains:
 | `Boris.HelloAnchor.Core` | Shared library: config, logging, and the pure logic that is unit-tested. |
 | `Boris.HelloAnchor.Service` | The LocalSystem Windows service. |
 | `Boris.HelloAnchor.Agent` | The per-session elevated agent (WinExe, no UI). |
+| `Boris.HelloAnchor.Displays` | Display enumeration (monitor IDs, names, work areas), shared by the Agent and Settings. |
+| `Boris.HelloAnchor.Settings` | The optional elevated Settings app (WinForms) for choosing the display. |
 | `Boris.HelloAnchor.Installer` | WiX v5 MSI project. It isn't built by a normal solution build because it needs the publish output; use `build.ps1`. |
 | `Boris.HelloAnchor.Tests` | xUnit v3 unit tests (Test Explorer). |
 

@@ -22,6 +22,7 @@ public sealed class ConfigLoaderTests
               "HelloAnchor": {
                 "TargetDisplay": "Internal",
                 "TargetDeviceName": null,
+                "TargetMonitorId": null,
                 "TargetProcessNames": [ "CredentialUIBroker" ],
                 "TargetWindowClasses": [ "Credential Dialog Xaml Host" ],
                 "VerifyDelaysMs": [ 150, 300, 600, 1000, 2000 ],
@@ -122,6 +123,43 @@ public sealed class ConfigLoaderTests
         Assert.Empty(result.Warnings);
         Assert.Equal(TargetDisplayMode.DeviceName, result.Options.TargetDisplay);
         Assert.Equal(@"\\.\DISPLAY2", result.Options.TargetDeviceName);
+    }
+
+    /// <summary>Monitor mode with a valid ID is accepted, and the model part is upper-cased.</summary>
+    [Fact]
+    public void MonitorModeWithId_IsAcceptedAndNormalised()
+    {
+        var result = ConfigLoader.Parse("""{ "HelloAnchor": { "TargetDisplay": "Monitor", "TargetMonitorId": " del41b8-5KC0Q83 " } }""");
+
+        Assert.Empty(result.Warnings);
+        Assert.Equal(TargetDisplayMode.Monitor, result.Options.TargetDisplay);
+        Assert.Equal("DEL41B8-5KC0Q83", result.Options.TargetMonitorId);
+    }
+
+    /// <summary>Monitor mode without an ID reverts to Internal.</summary>
+    [Fact]
+    public void MonitorModeWithoutId_FallsBackToInternal()
+    {
+        var result = ConfigLoader.Parse("""{ "HelloAnchor": { "TargetDisplay": "Monitor" } }""");
+
+        Assert.Single(result.Warnings);
+        Assert.Equal(TargetDisplayMode.Internal, result.Options.TargetDisplay);
+    }
+
+    /// <summary>A malformed ID is rejected, which also reverts Monitor mode to Internal.</summary>
+    [Theory]
+    [InlineData("\"DISPLAY2\"")]
+    [InlineData("\"\\\\\\\\.\\\\DISPLAY2\"")]
+    [InlineData("\"DEL41B8-\"")]
+    [InlineData("\"DEL41B8 5KC0Q83\"")]
+    [InlineData("42")]
+    public void MonitorModeWithBadId_WarnsAndFallsBackToInternal(string idJson)
+    {
+        var result = ConfigLoader.Parse($$"""{ "HelloAnchor": { "TargetDisplay": "Monitor", "TargetMonitorId": {{idJson}} } }""");
+
+        Assert.Equal(2, result.Warnings.Count);
+        Assert.Null(result.Options.TargetMonitorId);
+        Assert.Equal(TargetDisplayMode.Internal, result.Options.TargetDisplay);
     }
 
     /// <summary>A trailing ".exe" on a process name is tolerated.</summary>
@@ -229,6 +267,7 @@ public sealed class ConfigLoaderTests
     {
         Assert.Equal(expected.TargetDisplay, actual.TargetDisplay);
         Assert.Equal(expected.TargetDeviceName, actual.TargetDeviceName);
+        Assert.Equal(expected.TargetMonitorId, actual.TargetMonitorId);
         Assert.Equal(expected.TargetProcessNames, actual.TargetProcessNames);
         Assert.Equal(expected.TargetWindowClasses, actual.TargetWindowClasses);
         Assert.Equal(expected.VerifyDelaysMs, actual.VerifyDelaysMs);
