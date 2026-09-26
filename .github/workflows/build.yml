@@ -1,7 +1,8 @@
 name: Build
 
-# Continuous integration: builds, tests and packages on every push to main and every PR into main, and
-# uploads the MSI as a build artifact. On pull requests it also reminds you to bump <Version>.
+# Continuous integration: builds, tests and packages on every push to main and every PR into main. The
+# MSI is built and verified so a broken package fails the PR, but it is not uploaded: nothing consumes
+# it, and the Release workflow builds its own. On pull requests it also reminds you to bump <Version>.
 #
 # This workflow never publishes a release. That is the Release workflow, which is run manually.
 # Tags are deliberately NOT a trigger here: the Release workflow creates the tag itself and builds
@@ -12,11 +13,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to stamp on the MSI (e.g. 1.2.3). Leave empty to use Directory.Build.props. Does not create a release.'
-        required: false
-        default: ''
 
 permissions:
   contents: read
@@ -103,8 +99,8 @@ jobs:
     # Windows is not a preference here: the projects target net10.0-windows and WiX only runs on Windows.
     runs-on: windows-latest
 
-    # Read-only: this workflow only builds and uploads an artifact. Creating tags and releases is
-    # the Release workflow's job, and it asks for contents: write there instead.
+    # Read-only: this workflow only builds and tests. Creating tags and releases is the Release
+    # workflow's job, and it asks for contents: write there instead.
     permissions:
       contents: read
 
@@ -120,17 +116,14 @@ jobs:
       # .wixproj), which NuGet restores. v5 is deliberate: v6+ require accepting the Open Source
       # Maintenance Fee EULA.
 
-      - name: Determine version
+      - name: Read version from Directory.Build.props
         id: version
         shell: pwsh
         run: |
-          # A manual run may stamp a test version; otherwise use the single source of truth.
-          $version = '${{ github.event.inputs.version }}'
-          if (-not $version) {
-            $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version |
-              Where-Object { $_ } | Select-Object -First 1
-            $version = "$version".Trim()
-          }
+          # The single source of truth; only needed here to name and verify the MSI.
+          $version = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version |
+            Where-Object { $_ } | Select-Object -First 1
+          $version = "$version".Trim()
 
           # MSI ProductVersion must be numeric major.minor.build, so reject anything else early
           # rather than failing deep inside the WiX build with a less obvious message.
@@ -143,18 +136,13 @@ jobs:
           Write-Host "Building version $version"
 
       # build.ps1 is the same script developers run: restore, build (warnings as errors), unit tests,
-      # self-contained publish of Service + Agent, then the MSI. No signing in CI.
+      # self-contained publish of Service + Agent, then the MSI. No signing in CI. No -Version override:
+      # the build takes it from Directory.Build.props.
       - name: Build, test and package
         shell: pwsh
-        run: ./build.ps1 -Version ${{ steps.version.outputs.version }}
+        run: ./build.ps1
 
       - name: Verify the MSI looks right
         shell: pwsh
         run: ./tools/Test-Msi.ps1 -Path artifacts/Boris.HelloAnchor-${{ steps.version.outputs.version }}-x64.msi -ExpectedVersion ${{ steps.version.outputs.version }}
 
-      - name: Upload MSI artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: BorisHelloAnchor-${{ steps.version.outputs.version }}-msi
-          path: artifacts/Boris.HelloAnchor-${{ steps.version.outputs.version }}-x64.msi
-          if-no-files-found: error

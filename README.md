@@ -289,9 +289,8 @@ Docs-, test- and CI-only changes need no bump.
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| **Build** (`build.yml`) | Push/PR to `main`, manual | Runs `build.ps1` (build, tests, MSI), checks the MSI with `tools/Test-Msi.ps1`, uploads it as an artifact. On PRs, warns if shipped files changed but `<Version>` didn't. |
+| **Build** (`build.yml`) | Push/PR to `main`, manual | Runs `build.ps1` (build, tests, MSI), checks the MSI with `tools/Test-Msi.ps1`. The MSI is not uploaded; only Release publishes one. On PRs, warns if shipped files changed but `<Version>` didn't. |
 | **Release** (`release.yml`) | Manual only | Reads the version from `Directory.Build.props`, refuses to go backwards or reuse a tag, builds and verifies the MSI, then creates tag `vX.Y.Z` and a GitHub Release with the MSI and a SHA-256 checksum. |
-| **Cleanup old artifacts** (`cleanup-artifacts.yml`) | Daily, manual | Deletes build artifacts older than 7 days, always keeping the newest 3. Never touches release assets. |
 
 To release: merge a PR that raises `<Version>`, then run **Actions → Release → Run workflow**.
 
