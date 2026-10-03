@@ -108,6 +108,31 @@ public sealed class TargetDisplaySelectorTests
         Assert.Null(TargetDisplaySelector.FindMonitor([unknown], "BOE0868"));
     }
 
+    /// <summary>Home and work each get their own choice; an unknown setup uses the top-level setting.</summary>
+    [Fact]
+    public void Profiles_PickChoiceForAttachedSetup()
+    {
+        var homeScreen = Monitor(@"\\.\DISPLAY2", "GSM5B7F-HOME1", isInternal: false, isPrimary: true);
+        var options = Options(TargetDisplayMode.Internal) with
+        {
+            Profiles =
+            [
+                new DisplayProfile(["BOE0868", "GSM5B7F-HOME1"], TargetDisplayMode.Monitor, "GSM5B7F-HOME1"),
+                new DisplayProfile(["BOE0868", "DEL41B8-AAA111", "DEL41B8-BBB222"], TargetDisplayMode.Monitor, "DEL41B8-BBB222"),
+            ],
+        };
+
+        var home = TargetDisplaySelector.Select([homeScreen, Laptop], options);
+        var work = TargetDisplaySelector.Select([DellB, Laptop, DellA], options); // Order doesn't matter.
+        var elsewhere = TargetDisplaySelector.Select([Laptop, DellA], options);
+
+        Assert.Same(homeScreen, home?.Monitor);
+        Assert.Same(options.Profiles[0], home?.Profile);
+        Assert.Same(DellB, work?.Monitor);
+        Assert.Same(Laptop, elsewhere?.Monitor);
+        Assert.Null(elsewhere?.Profile);
+    }
+
     private static HelloAnchorOptions Options(TargetDisplayMode mode, string? monitorId = null, string? deviceName = null) =>
         HelloAnchorOptions.Default with { TargetDisplay = mode, TargetMonitorId = monitorId, TargetDeviceName = deviceName };
 

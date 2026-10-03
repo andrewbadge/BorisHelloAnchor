@@ -43,6 +43,11 @@ internal sealed class DisplayResolver(ILogger logger)
             return null;
         }
 
+        if (selection.Profile is { } profile)
+        {
+            logger.LogDebug("Monitor setup [{Setup}] has a profile: {Mode} {Target}.", string.Join(", ", profile.Monitors), profile.TargetDisplay, profile.TargetMonitorId);
+        }
+
         if (selection.IsFallback)
         {
             logger.LogDebug(

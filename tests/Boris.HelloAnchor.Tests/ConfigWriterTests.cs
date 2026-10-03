@@ -95,6 +95,27 @@ public sealed class ConfigWriterTests
         Assert.False(ConfigWriter.HasComments("""{ "HelloAnchor": { "TargetDeviceName": "// not a comment" } }"""));
     }
 
+    /// <summary>Each setup gets its own profile; saving the same setup again replaces it, whatever the monitor order.</summary>
+    [Fact]
+    public void SetProfile_AddsPerSetupAndReplacesSameSetup()
+    {
+        string[] home = ["BOE0868", "GSM5B7F-HOME1"];
+        string[] work = ["DEL41B8-BBB222", "BOE0868", "DEL41B8-AAA111"];
+
+        var json = ConfigWriter.SetProfile(ShippedConfig, home, TargetDisplayMode.Internal, null);
+        json = ConfigWriter.SetProfile(json, work, TargetDisplayMode.Monitor, "DEL41B8-AAA111");
+        json = ConfigWriter.SetProfile(json, [.. work.Reverse()], TargetDisplayMode.Monitor, "DEL41B8-BBB222");
+        var result = ConfigLoader.Parse(json);
+
+        Assert.Empty(result.Warnings);
+        Assert.Equal(TargetDisplayMode.Internal, result.Options.TargetDisplay); // Top level untouched.
+        Assert.Equal(2, result.Options.Profiles.Count);
+        Assert.Equal(TargetDisplayMode.Internal, result.Options.Profiles[0].TargetDisplay);
+        Assert.Null(result.Options.Profiles[0].TargetMonitorId);
+        Assert.Equal(["BOE0868", "DEL41B8-AAA111", "DEL41B8-BBB222"], result.Options.Profiles[1].Monitors);
+        Assert.Equal("DEL41B8-BBB222", result.Options.Profiles[1].TargetMonitorId);
+    }
+
     /// <summary>Writing in place replaces the whole contents, including a longer old file.</summary>
     [Fact]
     public void WriteInPlace_TruncatesOldContents()
