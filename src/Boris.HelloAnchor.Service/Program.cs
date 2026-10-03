@@ -68,6 +68,8 @@ config.Changed += (_, options) => levelSwitch.MinimumLevel = HelloAnchorLogging.
 
 // Report what the folder hardening did now that logging exists.
 var startupLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Boris.HelloAnchor.Service.Security");
+AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+    startupLogger.LogCritical(e.ExceptionObject as Exception, "Unhandled exception; service terminating.");
 foreach (var message in hardeningMessages)
 {
     startupLogger.LogWarning("Data folder hardening: {Message}", message);
@@ -78,4 +80,15 @@ if (!runningAsService)
     startupLogger.LogWarning("Not running under the Service Control Manager: session-change events are unavailable; relying on 30 s reconciliation.");
 }
 
-await host.RunAsync();
+try
+{
+    await host.RunAsync();
+}
+catch (Exception ex)
+{
+    // Logged, not rethrown. Non-zero exit so SCM recovery actions still apply.
+    startupLogger.LogCritical(ex, "Service failed.");
+    return 1;
+}
+
+return 0;

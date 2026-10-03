@@ -31,7 +31,8 @@ public sealed record DisplayMonitor(
 /// <param name="IsFallback">
 /// <see langword="true"/> if the configured display isn't attached and the built-in panel was used instead.
 /// </param>
-public sealed record DisplaySelection(DisplayMonitor Monitor, bool IsFallback);
+/// <param name="Profile">The profile whose choice was used, or <see langword="null"/> for the top-level setting.</param>
+public sealed record DisplaySelection(DisplayMonitor Monitor, bool IsFallback, DisplayProfile? Profile = null);
 
 /// <summary>
 /// Picks the monitor to move the prompt to (SPEC §7.4). Pure logic over an already-enumerated list, so it can
@@ -47,6 +48,41 @@ public static class TargetDisplaySelector
     /// <param name="monitors">Attached monitors, in <c>QueryDisplayConfig</c> path order.</param>
     /// <param name="options">Current configuration.</param>
     public static DisplaySelection? Select(IReadOnlyList<DisplayMonitor> monitors, HelloAnchorOptions options)
+    {
+        var profile = FindProfile(monitors, options);
+        if (profile is not null)
+        {
+            options = options with { TargetDisplay = profile.TargetDisplay, TargetMonitorId = profile.TargetMonitorId };
+        }
+
+        return SelectFor(monitors, options) is { } selection ? selection with { Profile = profile } : null;
+    }
+
+    /// <summary>
+    /// Identifies a monitor setup: the IDs of the attached monitors, sorted. Monitors without an ID are left out.
+    /// Closing the lid removes the built-in panel, so lid-open and lid-closed are different setups.
+    /// </summary>
+    /// <param name="monitors">Attached monitors.</param>
+    public static IReadOnlyList<string> SetupKey(IReadOnlyList<DisplayMonitor> monitors) =>
+        [.. monitors.Select(m => m.MonitorId).OfType<string>().Order(StringComparer.OrdinalIgnoreCase)];
+
+    /// <summary>Returns the profile saved for exactly this set of monitors, or <see langword="null"/>.</summary>
+    /// <param name="monitors">Attached monitors.</param>
+    /// <param name="options">Current configuration.</param>
+    public static DisplayProfile? FindProfile(IReadOnlyList<DisplayMonitor> monitors, HelloAnchorOptions options)
+    {
+        var key = SetupKey(monitors);
+        return key.Count == 0 ? null : options.Profiles.FirstOrDefault(p => SameSetup(p.Monitors, key));
+    }
+
+    /// <summary>True if two setup keys list the same monitors (order and case ignored).</summary>
+    /// <param name="a">One setup key.</param>
+    /// <param name="b">The other.</param>
+    public static bool SameSetup(IReadOnlyList<string> a, IReadOnlyList<string> b) =>
+        a.Order(StringComparer.OrdinalIgnoreCase).SequenceEqual(b.Order(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Applies the (already profile-resolved) choice in <paramref name="options"/>.</summary>
+    private static DisplaySelection? SelectFor(IReadOnlyList<DisplayMonitor> monitors, HelloAnchorOptions options)
     {
         var chosen = options.TargetDisplay switch
         {

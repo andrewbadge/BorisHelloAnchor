@@ -31,6 +31,12 @@ public enum TargetDisplayMode
     Monitor,
 }
 
+/// <summary>The display choice for one monitor setup, e.g. "at work, use the middle screen".</summary>
+/// <param name="Monitors">Monitor IDs of the setup, sorted (see <see cref="Displays.TargetDisplaySelector.SetupKey"/>).</param>
+/// <param name="TargetDisplay"><see cref="TargetDisplayMode.Internal"/>, <see cref="TargetDisplayMode.Primary"/> or <see cref="TargetDisplayMode.Monitor"/>.</param>
+/// <param name="TargetMonitorId">Canonical monitor ID; set only for <see cref="TargetDisplayMode.Monitor"/>.</param>
+public sealed record DisplayProfile(IReadOnlyList<string> Monitors, TargetDisplayMode TargetDisplay, string? TargetMonitorId);
+
 /// <summary>
 /// Immutable configuration shared by the service and the agent. Mirrors the <c>HelloAnchor</c> section
 /// of <c>config.json</c> (SPEC §4). Reloads produce a new instance rather than mutating this one, so a
@@ -52,6 +58,12 @@ public sealed record HelloAnchorOptions
     /// <see cref="TargetDisplayMode.Monitor"/>. Held in canonical form (see <see cref="Displays.MonitorIdentity.TryNormalise"/>).
     /// </summary>
     public string? TargetMonitorId { get; init; }
+
+    /// <summary>
+    /// Per-setup display choices. When the attached monitors match a profile's <see cref="DisplayProfile.Monitors"/>
+    /// exactly, its choice replaces <see cref="TargetDisplay"/> and <see cref="TargetMonitorId"/>.
+    /// </summary>
+    public IReadOnlyList<DisplayProfile> Profiles { get; init; } = [];
 
     /// <summary>Process names (without <c>.exe</c>) whose windows are candidates.</summary>
     public IReadOnlyList<string> TargetProcessNames { get; init; } = ["CredentialUIBroker"];

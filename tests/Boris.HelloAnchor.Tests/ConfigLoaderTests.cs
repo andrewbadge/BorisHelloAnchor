@@ -85,6 +85,11 @@ public sealed class ConfigLoaderTests
     [InlineData("""{ "HelloAnchor": { "SkipRemoteSessions": "yes" } }""")]
     [InlineData("""{ "HelloAnchor": { "AllowSystemTokenFallback": 1 } }""")]
     [InlineData("""{ "HelloAnchor": { "LogLevel": "Loud" } }""")]
+    [InlineData("""{ "HelloAnchor": { "Profiles": {} } }""")]
+    [InlineData("""{ "HelloAnchor": { "Profiles": [ { "Monitors": [], "TargetDisplay": "Internal" } ] } }""")]
+    [InlineData("""{ "HelloAnchor": { "Profiles": [ { "Monitors": [ "not an id" ], "TargetDisplay": "Internal" } ] } }""")]
+    [InlineData("""{ "HelloAnchor": { "Profiles": [ { "Monitors": [ "BOE0868" ], "TargetDisplay": "Monitor" } ] } }""")]
+    [InlineData("""{ "HelloAnchor": { "Profiles": [ { "Monitors": [ "BOE0868" ], "TargetDisplay": "DeviceName" } ] } }""")]
     public void InvalidField_UsesDefaultAndWarns(string json)
     {
         var result = ConfigLoader.Parse(json);

@@ -108,6 +108,7 @@ Configuration lives in a single JSON file shared by the service and agent:
 | `TargetDisplay` | `"Internal"` \| `"Primary"` \| `"DeviceName"` \| `"Monitor"` | Which display to move the prompt to. `Internal` = the built-in laptop panel. Any other mode falls back to `Internal` when its display isn't attached (§7.4). |
 | `TargetDeviceName` | string or null | GDI device name (e.g. `\\.\DISPLAY1`). Used only when `TargetDisplay` is `DeviceName`. Not stable across docking; kept for compatibility. |
 | `TargetMonitorId` | string or null | Stable monitor ID (§7.4), e.g. `DEL41B8-5KC0Q83` or model-only `DEL41B8`. Used only when `TargetDisplay` is `Monitor`. |
+| `Profiles` | object[] | Per-setup choices (§7.4). Each has `Monitors` (non-empty array of monitor IDs), `TargetDisplay` (`Internal`, `Primary` or `Monitor`) and `TargetMonitorId` (required for `Monitor`). An invalid entry is skipped with a warning. |
 | `TargetProcessNames` | string[] | Process names (no `.exe`) whose windows are candidates. |
 | `TargetWindowClasses` | string[] | Window class names that must also match. A window must match **both** lists. |
 | `VerifyDelaysMs` | int[] | After a move, re-check position at each delay; re-apply the move if it snapped back or was resized. |
@@ -133,7 +134,7 @@ Contains:
 - Path constants: ProgramData folder, config path, log folder (`%ProgramData%\Boris\HelloAnchor\logs`).
 - Shared names: shutdown event name `Global\Boris.HelloAnchor.Shutdown`, agent mutex name `Local\Boris.HelloAnchor.Agent`, agent exit codes (§6.3).
 - Pure logic that is unit-tested: centring math, backoff sequence, exit-code → restart decision, output-technology classification.
-- Logging setup helper using **Serilog** (`Serilog.Extensions.Hosting` or `Serilog.Extensions.Logging` + `Serilog.Sinks.File`), rolling daily, 14 files retained. Service logs to `service-.log`, agent logs to `agent-s{sessionId}-.log`.
+- Logging setup helper using **Serilog** (`Serilog.Extensions.Hosting` or `Serilog.Extensions.Logging` + `Serilog.Sinks.File`), rolling daily, 14 files retained. Service logs to `service-.log`, agent logs to `agent-s{sessionId}-.log`, Settings app logs its errors to `settings-.log`.
 
 ---
 
@@ -259,6 +260,8 @@ Resolve on **every** matching event (it's cheap and handles docking, undocking, 
 4. **Monitor ID.** The device path `\\?\DISPLAY#DEL41B8#5&2a8c1b0&0&UID4352#{guid}` names the device instance `DISPLAY\DEL41B8\5&2a8c1b0&0&UID4352`. Read its EDID from `HKLM\SYSTEM\CurrentControlSet\Enum\<instance>\Device Parameters\EDID` and build the ID as `MMMPPPP` (PNP manufacturer + product code in hex, the same as the Windows hardware ID) plus `-SERIAL` when the monitor reports one: the serial-number descriptor (tag `0xFF`) if present, else the numeric serial (bytes 12–15, `X8`) if non-zero. Characters that aren't printable ASCII, spaces, quotes and backslashes are dropped from the serial. If the EDID can't be read, use the model from the device path alone. Unlike GDI names, this ID follows the physical monitor across ports, docks and reboots.
 5. `EnumDisplayMonitors` + `GetMonitorInfo` (`MONITORINFOEXW`) give each GDI source's `rcMonitor`, **`rcWork`** (work area, excludes the taskbar) and `MONITORINFOF_PRIMARY`. Monitors the CCD query didn't describe are still listed, without an ID and not internal.
 
+**Profiles first.** The setup key is the sorted list of attached monitors' IDs (monitors without an ID are left out; closing the lid removes the built-in panel, so lid-open and lid-closed are different setups). If a `Profiles` entry lists exactly those monitors (order and case ignored), its `TargetDisplay`/`TargetMonitorId` replace the top-level ones for this selection. Otherwise the top-level settings apply.
+
 **Choose**, keeping `QueryDisplayConfig` path order:
 
 - **`Internal`:** the first internal monitor. With several (dual-screen laptops), the first wins; pick another with `Monitor`.
@@ -295,7 +298,7 @@ An optional WinForms app that lets an administrator choose the target display wi
 - Never started automatically. The service and agent don't depend on it and don't talk to it: it only edits `config.json`, and the agent's config watcher (§4) applies the change.
 - Offers `Internal` (default), `Primary` and `Monitor` (a list of attached monitors from `DisplayTopology`, showing name, connection, resolution and monitor ID). `DeviceName` is shown only if the file already uses it. A configured monitor that isn't attached is still listed as "(not connected)" so saving doesn't lose it.
 - **Identify monitors** shows a borderless, non-activating label with the name and ID in the middle of each monitor for 4 seconds.
-- Saving (`ConfigWriter`) changes only `TargetDisplay` and `TargetMonitorId`, keeping every other setting and key order. Comments can't be preserved, so the app warns first if the file has any. The result is re-parsed with `ConfigLoader` before writing, and written in place so the file keeps its owner and ACL. If the data folder doesn't exist, it refuses rather than creating one with `%ProgramData%`'s permissive ACL.
+- Saving (`ConfigWriter.SetProfile`) silently stores the choice as the `Profiles` entry for the monitors attached right now, adding or replacing it; the top-level `TargetDisplay`/`TargetMonitorId` are written only when no attached monitor has an ID or for `DeviceName`. Opening the app shows the choice for the current setup. Saving keeps every other setting and key order. Comments can't be preserved, so the app warns first if the file has any. The result is re-parsed with `ConfigLoader` before writing, and written in place so the file keeps its owner and ACL. If the data folder doesn't exist, it refuses rather than creating one with `%ProgramData%`'s permissive ACL.
 
 ---
 

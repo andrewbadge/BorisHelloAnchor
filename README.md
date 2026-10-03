@@ -127,6 +127,9 @@ Monitors are recognised by an ID built from their EDID: the model plus the seria
 Windows' `\\.\DISPLAYn` names, which can be renumbered. **If the chosen monitor isn't connected (for example,
 when you're undocked), the prompt goes to the built-in display instead.**
 
+The choice is remembered per monitor setup. Save at home with two screens and at work with three, and
+each place gets its own choice: HelloAnchor recognises the setup from the monitors that are connected.
+
 The Settings app is optional. It never runs on its own, and HelloAnchor works without it.
 
 ## Configuration
@@ -156,6 +159,7 @@ Changes apply within about a second, with no restart needed.
 | `TargetDisplay` | `Internal` | `Internal` (the built-in panel), `Primary` (Windows' main display), `Monitor` (the monitor in `TargetMonitorId`) or `DeviceName`. If the chosen display isn't connected, the built-in panel is used instead. |
 | `TargetMonitorId` | `null` | Monitor ID such as `DEL41B8-5KC0Q83`, used when `TargetDisplay` is `Monitor`. The Settings app fills it in. A model-only ID such as `DEL41B8` matches any monitor of that model. |
 | `TargetDeviceName` | `null` | GDI name such as `\\.\DISPLAY1`, used when `TargetDisplay` is `DeviceName`. Windows can renumber these on docking, so prefer `Monitor`. |
+| `Profiles` | `[]` | Remembered choices per monitor setup, written by the Settings app. Each entry has `Monitors` (the IDs of every attached monitor), `TargetDisplay` (`Internal`, `Primary` or `Monitor`) and, for `Monitor`, `TargetMonitorId`. When the attached monitors match an entry exactly, its choice is used instead of the top-level one. Setups without an entry use the top-level settings. |
 | `TargetProcessNames` | `CredentialUIBroker` | Processes whose windows are candidates (no `.exe`). |
 | `TargetWindowClasses` | `Credential Dialog Xaml Host` | Window classes that must also match. |
 | `VerifyDelaysMs` | `150, 300, 600, 1000, 2000` | After each move, re-check at these times (ms) and fix the position if it snapped back or was resized. A safety net: the agent also re-anchors the prompt the moment it becomes visible. |
@@ -169,8 +173,8 @@ never stops the service.
 
 ## Logs
 
-- Files: `%ProgramData%\Boris\HelloAnchor\logs\` contains `service-YYYYMMDD.log` and
-  `agent-s<session>-YYYYMMDD.log`. They roll daily and 14 days are kept.
+- Files: `%ProgramData%\Boris\HelloAnchor\logs\` contains `service-YYYYMMDD.log`,
+  `agent-s<session>-YYYYMMDD.log` and `settings-YYYYMMDD.log`. They roll daily and 14 days are kept.
 - Windows Event Log: **Application** log, source `Boris.HelloAnchor`, for start/stop, warnings and errors.
 
 Each handled prompt produces one line, for example:

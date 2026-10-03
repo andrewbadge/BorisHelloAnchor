@@ -46,6 +46,82 @@ public static class ConfigWriter
             throw new ArgumentException("Monitor mode needs a monitor ID.", nameof(monitorId));
         }
 
+        var (root, section) = ParseSection(json);
+
+        Set(section, nameof(HelloAnchorOptions.TargetDisplay), JsonValue.Create(mode.ToString()), after: null);
+        if (mode == TargetDisplayMode.Monitor)
+        {
+            // Keep the three display settings together when adding the ID to an older file.
+            Set(section, nameof(HelloAnchorOptions.TargetMonitorId), JsonValue.Create(monitorId),
+                after: FindKey(section, nameof(HelloAnchorOptions.TargetDeviceName)) ?? FindKey(section, nameof(HelloAnchorOptions.TargetDisplay)));
+        }
+
+        return root.ToJsonString(WriteOptions) + Environment.NewLine;
+    }
+
+    /// <summary>
+    /// Returns <paramref name="json"/> with the profile for the monitor setup <paramref name="setup"/> set to
+    /// <paramref name="mode"/>, replacing an existing profile for the same setup or adding one. The top-level
+    /// settings, used for setups without a profile, are left alone.
+    /// </summary>
+    /// <param name="json">Current file contents, or <see langword="null"/> / empty to start a new file.</param>
+    /// <param name="setup">The setup's monitor IDs (see <see cref="Displays.TargetDisplaySelector.SetupKey"/>).</param>
+    /// <param name="mode"><see cref="TargetDisplayMode.Internal"/>, <see cref="TargetDisplayMode.Primary"/> or <see cref="TargetDisplayMode.Monitor"/>.</param>
+    /// <param name="monitorId">Canonical monitor ID for <see cref="TargetDisplayMode.Monitor"/>; ignored otherwise.</param>
+    /// <exception cref="InvalidDataException">The file isn't a JSON object, or <c>HelloAnchor</c> or <c>Profiles</c> has the wrong type.</exception>
+    public static string SetProfile(string? json, IReadOnlyList<string> setup, TargetDisplayMode mode, string? monitorId)
+    {
+        if (setup.Count == 0)
+        {
+            throw new ArgumentException("A profile needs at least one monitor ID.", nameof(setup));
+        }
+
+        if (mode is not (TargetDisplayMode.Internal or TargetDisplayMode.Primary or TargetDisplayMode.Monitor) ||
+            (mode == TargetDisplayMode.Monitor && monitorId is null))
+        {
+            throw new ArgumentException("Profiles support Internal, Primary, or Monitor with a monitor ID.", nameof(mode));
+        }
+
+        var (root, section) = ParseSection(json);
+        if (FindKey(section, nameof(HelloAnchorOptions.Profiles)) is not { } profilesKey)
+        {
+            profilesKey = nameof(HelloAnchorOptions.Profiles);
+            Set(section, profilesKey, new JsonArray(),
+                after: FindKey(section, nameof(HelloAnchorOptions.TargetMonitorId)) ?? FindKey(section, nameof(HelloAnchorOptions.TargetDisplay)));
+        }
+
+        var profiles = section[profilesKey] as JsonArray ?? throw new InvalidDataException($"'{profilesKey}' in config.json is not an array.");
+
+        var profile = new JsonObject
+        {
+            ["Monitors"] = new JsonArray([.. setup.Order(StringComparer.OrdinalIgnoreCase).Select(id => (JsonNode?)JsonValue.Create(id))]),
+            [nameof(HelloAnchorOptions.TargetDisplay)] = mode.ToString(),
+        };
+        if (mode == TargetDisplayMode.Monitor)
+        {
+            profile[nameof(HelloAnchorOptions.TargetMonitorId)] = monitorId;
+        }
+
+        // Replace the entry for the same setup; anything unreadable is left for the loader to warn about.
+        var existing = profiles.Select((node, index) => (node, index)).FirstOrDefault(p =>
+            p.node is JsonObject o && FindKey(o, "Monitors") is { } k && o[k] is JsonArray a &&
+            a.All(n => n?.GetValueKind() == JsonValueKind.String) &&
+            Displays.TargetDisplaySelector.SameSetup([.. a.Select(n => n!.GetValue<string>())], setup));
+        if (existing.node is not null)
+        {
+            profiles[existing.index] = profile;
+        }
+        else
+        {
+            profiles.Add(profile);
+        }
+
+        return root.ToJsonString(WriteOptions) + Environment.NewLine;
+    }
+
+    /// <summary>Parses the file and returns its root and the <c>HelloAnchor</c> section, creating either if missing.</summary>
+    private static (JsonObject Root, JsonObject Section) ParseSection(string? json)
+    {
         JsonObject root;
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -67,16 +143,7 @@ public static class ConfigWriter
         var section = FindKey(root, ConfigLoader.SectionName) is { } sectionKey
             ? root[sectionKey] as JsonObject ?? throw new InvalidDataException($"'{sectionKey}' in config.json is not an object.")
             : AddObject(root, ConfigLoader.SectionName);
-
-        Set(section, nameof(HelloAnchorOptions.TargetDisplay), JsonValue.Create(mode.ToString()), after: null);
-        if (mode == TargetDisplayMode.Monitor)
-        {
-            // Keep the three display settings together when adding the ID to an older file.
-            Set(section, nameof(HelloAnchorOptions.TargetMonitorId), JsonValue.Create(monitorId),
-                after: FindKey(section, nameof(HelloAnchorOptions.TargetDeviceName)) ?? FindKey(section, nameof(HelloAnchorOptions.TargetDisplay)));
-        }
-
-        return root.ToJsonString(WriteOptions) + Environment.NewLine;
+        return (root, section);
     }
 
     /// <summary>Returns <see langword="true"/> if <paramref name="json"/> contains comments, which saving would drop.</summary>

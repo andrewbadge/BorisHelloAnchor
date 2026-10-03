@@ -167,6 +167,12 @@ public static class ConfigLoader
 
                         break;
 
+                    case "PROFILES":
+                        options = ReadProfiles(value, property.Name, warnings) is { } profiles
+                            ? options with { Profiles = profiles }
+                            : options;
+                        break;
+
                     case "TARGETPROCESSNAMES":
                         // Accept "Foo.exe" as well as "Foo" — the spec says no extension, but being lenient is harmless.
                         options = ReadStringList(value, property.Name, warnings, StripExe) is { } processes
@@ -359,6 +365,73 @@ public static class ConfigLoader
 
         warnings.Add($"'{name}' must be a non-empty array of integers between {min} and {max}; using default.");
         return null;
+    }
+
+    /// <summary>
+    /// Reads the per-setup profiles. An invalid profile is skipped with a warning; the others still apply.
+    /// Returns <see langword="null"/> (keep the default) only if the value isn't an array.
+    /// </summary>
+    private static DisplayProfile[]? ReadProfiles(JsonElement value, string name, List<string> warnings)
+    {
+        if (value.ValueKind != JsonValueKind.Array)
+        {
+            warnings.Add($"'{name}' must be an array; ignored.");
+            return null;
+        }
+
+        var profiles = new List<DisplayProfile>();
+        var index = 0;
+        foreach (var item in value.EnumerateArray())
+        {
+            if (ReadProfile(item) is { } profile)
+            {
+                profiles.Add(profile);
+            }
+            else
+            {
+                warnings.Add($"'{name}' entry {index} must have a non-empty 'Monitors' array of monitor IDs and a 'TargetDisplay' of Internal, Primary, or Monitor (with a valid 'TargetMonitorId'); ignored.");
+            }
+
+            index++;
+        }
+
+        return [.. profiles];
+    }
+
+    /// <summary>Reads one profile, or returns <see langword="null"/> if anything about it is invalid.</summary>
+    private static DisplayProfile? ReadProfile(JsonElement item)
+    {
+        if (item.ValueKind != JsonValueKind.Object ||
+            !TryGetPropertyIgnoreCase(item, "Monitors", out var monitorsValue) || monitorsValue.ValueKind != JsonValueKind.Array ||
+            !TryGetPropertyIgnoreCase(item, nameof(HelloAnchorOptions.TargetDisplay), out var modeValue) || modeValue.ValueKind != JsonValueKind.String ||
+            !Enum.TryParse<TargetDisplayMode>(modeValue.GetString(), ignoreCase: true, out var mode) ||
+            mode is not (TargetDisplayMode.Internal or TargetDisplayMode.Primary or TargetDisplayMode.Monitor) ||
+            int.TryParse(modeValue.GetString(), out _))
+        {
+            return null;
+        }
+
+        var monitors = new List<string>();
+        foreach (var monitor in monitorsValue.EnumerateArray())
+        {
+            if (monitor.ValueKind != JsonValueKind.String || !MonitorIdentity.TryNormalise(monitor.GetString(), out var id))
+            {
+                return null;
+            }
+
+            monitors.Add(id);
+        }
+
+        string? monitorId = null;
+        if (mode == TargetDisplayMode.Monitor &&
+            (!TryGetPropertyIgnoreCase(item, nameof(HelloAnchorOptions.TargetMonitorId), out var idValue) ||
+             idValue.ValueKind != JsonValueKind.String ||
+             !MonitorIdentity.TryNormalise(idValue.GetString(), out monitorId)))
+        {
+            return null;
+        }
+
+        return monitors.Count == 0 ? null : new DisplayProfile([.. monitors.Order(StringComparer.OrdinalIgnoreCase)], mode, monitorId);
     }
 
     /// <summary>Removes a trailing <c>.exe</c> from a process name.</summary>
