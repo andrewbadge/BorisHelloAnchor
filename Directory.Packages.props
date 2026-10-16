@@ -14,9 +14,9 @@
     <PackageVersion Include="Microsoft.Windows.CsWin32" Version="0.3.335" />
 
     <!-- Hosting and logging. -->
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.EventLog" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.EventLog" Version="10.0.13" />
     <PackageVersion Include="Serilog" Version="4.4.0" />
     <PackageVersion Include="Serilog.Extensions.Logging" Version="10.0.0" />
     <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
